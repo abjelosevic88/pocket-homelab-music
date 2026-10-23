@@ -1,0 +1,51 @@
+{
+  "name": "Pocket Music",
+  "short_name": "Music",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f5f6f8",
+  "theme_color": "#dc2626",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    },
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    },
+    {
+      "src": "/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/apple-touch-icon.png",
+      "sizes": "180x180",
+      "type": "image/png"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Make a mix",
+      "url": "/mix"
+    },
+    {
+      "name": "Shuffle my library",
+      "url": "/?play=shuffle"
+    },
+    {
+      "name": "Listening stats",
+      "url": "/stats"
+    }
+  ],
+  "description": "Your music library, played anywhere."
+}

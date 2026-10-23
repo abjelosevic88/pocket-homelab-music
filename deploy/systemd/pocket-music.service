@@ -1,0 +1,24 @@
+[Unit]
+Description=Pocket Music — your music library, played anywhere
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=pocket-music
+Group=pocket-music
+ExecStart=/usr/local/bin/pocket-music
+Environment=DATA_DIR=/var/lib/pocket-music
+Environment=PORT=8080
+Environment=BASE_URL=https://music.example.com
+Environment=NAVIDROME_URL=http://127.0.0.1:4533
+Environment=SECURE_COOKIES=true
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/pocket-music
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

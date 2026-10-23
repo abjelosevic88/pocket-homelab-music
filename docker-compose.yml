@@ -1,0 +1,33 @@
+# Pocket Music — a player for the household on top of Navidrome (or any Subsonic server). Go + SQLite. One container, one volume.
+services:
+  pocket-music:
+    image: ghcr.io/abjelosevic88/pocket-homelab-music:latest
+    container_name: pocket-music
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      TZ: ${TZ:-Europe/Berlin}
+      BASE_URL: ${BASE_URL:-http://localhost:8080}
+      # SECURE_COOKIES: "true"          # behind HTTPS
+      # Your music server. Everyone signs in with their own account on it (Settings → Library).
+      NAVIDROME_URL: ${NAVIDROME_URL:-http://navidrome:4533}
+      NAVIDROME_PUBLIC_URL: ${NAVIDROME_PUBLIC_URL:-}
+      # First admin (only used while the database has no users):
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      # The admin's own music-server account, copied once into their connection:
+      NAVIDROME_USER: ${NAVIDROME_USER:-}
+      NAVIDROME_PASSWORD: ${NAVIDROME_PASSWORD:-}
+      # Optional, also settable per person in the UI:
+      LIDARR_URL: ${LIDARR_URL:-}
+      LIDARR_API_KEY: ${LIDARR_API_KEY:-}
+      MALOJA_URL: ${MALOJA_URL:-}
+      NOTIFY_URL: ${NOTIFY_URL:-}
+      # Pocket Core: one sign-in, Navidrome/Lidarr logins per person, Pocket AI.
+      # CORE_URL: http://pocket-core:8080
+      # CORE_REGISTRATION_KEY: ${CORE_REGISTRATION_KEY}
+    volumes:
+      - ./data:/data
+    extra_hosts:
+      - "host.docker.internal:host-gateway"

@@ -1,0 +1,7 @@
+# Pocket Music behind Caddy. Audio streams and the live updates (/api/v1/events,
+# server-sent events) are long requests: no timeouts and no buffering here.
+music.example.com {
+	reverse_proxy pocket-music:8080 {
+		flush_interval -1
+	}
+}
