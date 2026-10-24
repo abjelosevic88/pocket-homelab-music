@@ -567,3 +567,7 @@ a.top-row:hover { background: var(--hover); }
 .match-row:hover { background: var(--hover); }
 .match-pre { margin: 8px 0 0; padding: 10px 12px; max-height: 240px; overflow: auto; background: var(--surface-2); border-radius: 8px; font-size: 12px; line-height: 1.5; white-space: pre-wrap; }
 @media (max-width: 767px) { .filters .segmented { max-width: 100%; overflow-x: auto; scrollbar-width: none; } .lyr-search { min-width: 0; } }
+@media (max-width: 767px) {
+  .lyr-row { gap: 10px; padding: 6px 4px; }
+  .lyr-none { white-space: normal; text-align: right; max-width: 92px; line-height: 1.3; }
+}

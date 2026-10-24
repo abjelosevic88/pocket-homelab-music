@@ -64,13 +64,19 @@ function Snippet({ s }: { s: string }) {
 function KindBadge({ f }: { f: LyricsFile }) {
   if (f.kind === 'synced') return <span className="badge ok" title={f.source === 'lrc' ? '.lrc file beside the song' : "In the song's tags"}>Synced</span>
   if (f.kind === 'plain') return <span className="badge" title={f.source === 'lrc' ? '.lrc file without timings' : "In the song's tags"}>Plain</span>
-  return <span className="muted xsmall lyr-none">{missingLabel(f)}</span>
+  return <span className="muted xsmall lyr-none" title={f.tried_at ? `LRCLIB was last asked ${new Date(f.tried_at).toLocaleString()}` : undefined}>{missingLabel(f)}</span>
+}
+
+/** "3 d ago" for this week, else just the day — short enough for a phone row. */
+function when(iso: string): string {
+  const t = Date.now() - new Date(iso).getTime() < 7 * 86400e3 ? ago(iso) : new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+  return t.replace(/ /g, '\u00a0') // "5 d ago" never breaks in two
 }
 
 function missingLabel(f: LyricsFile): string {
   if (f.attempt === 'skip') return 'Kept without lyrics'
-  if (f.attempt === 'none' && f.tried_at) return `LRCLIB didn't know · ${ago(f.tried_at)}`
-  if (f.tried_at) return `Asked ${ago(f.tried_at)}`
+  if (f.attempt === 'none' && f.tried_at) return `Not on LRCLIB · ${when(f.tried_at)}`
+  if (f.tried_at) return `Asked ${when(f.tried_at)}`
   return 'Not looked up yet'
 }
 
@@ -198,7 +204,7 @@ export function LyricsLibrary() {
                   <button type="button" className="btn sm" disabled={!!fetching[f.id]} onClick={e => { e.stopPropagation(); fetchOne(f) }} title="Look the song up at LRCLIB now and save what it finds">
                     {fetching[f.id] ? <Spinner /> : <Icon name="download" size={13} />}Fetch
                   </button>)}
-                <Icon name="chevron-right" size={16} className="faint" />
+                <Icon name="chevron-right" size={16} className="faint hide-mobile" />
               </div>
             )
           })}
