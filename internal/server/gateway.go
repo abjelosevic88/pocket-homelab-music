@@ -18,6 +18,8 @@ import (
 	"sync"
 	"time"
 
+	core "github.com/abjelosevic88/pocket-homelab-core/sdk"
+
 	"github.com/abjelosevic88/pocket-homelab-music/internal/store"
 	"github.com/abjelosevic88/pocket-homelab-music/internal/subsonic"
 )
@@ -87,6 +89,11 @@ func gatewayError(w http.ResponseWriter, f string, code int, msg string) {
 // gatewayUser checks the client's credentials.
 func (s *Server) gatewayUser(ctx context.Context, q url.Values) (*store.User, string, error) {
 	if key := q.Get("apiKey"); key != "" {
+		// A phone paired with Pocket Core signs in with its device token (Pocket Homelab).
+		if s.core.Configured() && core.IsCoreToken(key) {
+			u, err := s.coreUser(ctx, key)
+			return u, "", err
+		}
 		u, err := s.store.GetUserByAPIToken(ctx, key)
 		return u, "", err
 	}

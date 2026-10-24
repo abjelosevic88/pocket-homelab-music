@@ -84,7 +84,7 @@ that needs the server.
 
 Pocket Music answers the Subsonic API at `/rest/…` for phone, car and desktop apps (Amperfy, play:Sub, Symfonium,
 Substreamer, Feishin…). An app signs in with the person's **app login** — a user name and a generated password
-from Settings → Phone & car apps (token `t`+`s`, plain `p`/`enc:` or an OpenSubsonic `apiKey` = a `pmu_` token), never
+from Settings → Phone & car apps (token `t`+`s`, plain `p`/`enc:` or an OpenSubsonic `apiKey` = a `pmu_` token, or the token Pocket Core gave a paired phone — that is how Pocket Homelab signs in), never
 their music server password. Every call is passed to the music server with the person's own account; `scrobble`
 also lands in their history (device = the app's name) and "now playing" shows the app as a device. Ten wrong
 passwords in 15 minutes lock a user name for a while.
