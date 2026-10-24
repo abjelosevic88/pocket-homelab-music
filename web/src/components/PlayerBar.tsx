@@ -6,7 +6,7 @@ import { createPortal } from 'react-dom'
 import { Link, useNavigate } from 'react-router-dom'
 import { api } from '../lib/api'
 import { V1, albumCover, clock, qualityOf } from '../lib/music'
-import { player, remote, takeOver, useDevices, usePlayer, useProgress } from '../lib/player-react'
+import { isLive, player, remote, takeOver, useDevices, usePlayer, useProgress, useTick } from '../lib/player-react'
 import type { Device, Lyrics, Song } from '../lib/types'
 import { useApp } from '../lib/app-context'
 import { isOffline } from '../lib/offline'
@@ -19,7 +19,8 @@ export function PlayerBar() {
   const mobile = useIsMobile()
   const [open, setOpen] = useState<null | 'now' | 'lyrics' | 'queue'>(null)
   const { others } = useDevices()
-  const remoteDev = others.find(d => d.active && d.playing && d.song)
+  useTick()
+  const remoteDev = others.find(d => isLive(d) && d.song)
   useEffect(() => {
     const h = (e: Event) => setOpen((e as CustomEvent).detail || 'now')
     window.addEventListener('pmu:nowplaying', h)
@@ -149,11 +150,13 @@ function RemoteBar({ d, slim }: { d: Device; slim?: boolean }) {
   const s = d.song!
   return (
     <div className={`remote-bar ${slim ? 'slim' : ''}`} role="region" aria-label={`Playing on ${d.name}`}>
-      <Icon name="speaker" size={16} className="remote-ico" />
+      <Icon name={d.kind === 'app' ? 'smartphone' : 'speaker'} size={16} className="remote-ico" />
       {!slim && <Cover src={albumCover(s.album_id, 80)} size={40} label={s.album} />}
       <div className="grow ellipsis"><b>Playing on {d.name}</b><span className="muted"> · {s.title} — {s.artist}</span></div>
-      <button type="button" className="btn ghost icon-only sm" aria-label={`Pause on ${d.name}`} title={`Pause on ${d.name}`} onClick={() => remote(d.id, 'pause')}><Icon name="pause" size={15} /></button>
-      <button type="button" className="btn ghost icon-only sm" aria-label={`Next on ${d.name}`} title={`Next on ${d.name}`} onClick={() => remote(d.id, 'next')}><Icon name="skip-forward" size={15} /></button>
+      {d.kind !== 'app' && <>
+        <button type="button" className="btn ghost icon-only sm" aria-label={`Pause on ${d.name}`} title={`Pause on ${d.name}`} onClick={() => remote(d.id, 'pause')}><Icon name="pause" size={15} /></button>
+        <button type="button" className="btn ghost icon-only sm" aria-label={`Next on ${d.name}`} title={`Next on ${d.name}`} onClick={() => remote(d.id, 'next')}><Icon name="skip-forward" size={15} /></button>
+      </>}
       <button type="button" className="btn sm primary" onClick={() => takeOver(d).catch(e => toast(errMsg(e), 'err'))}><Icon name="play" size={13} />Play here</button>
     </div>
   )
@@ -165,10 +168,10 @@ function DevicesButton({ compact }: { compact?: boolean }) {
   const [a, setA] = useState<Anchor | null>(null)
   const recent = others.filter(d => d.song && Date.now() - Date.parse(d.updated_at) < 7 * 864e5).slice(0, 6)
   if (!recent.length) return null
-  const live = recent.some(d => d.active && d.playing)
+  const live = recent.some(isLive)
   const items: MenuItem[] = [{ heading: 'Your other devices' }, ...recent.map(d => ({
-    label: <span className="dev-item"><span className="ellipsis"><b>{d.name}</b></span><span className="muted xsmall ellipsis">{d.active && d.playing ? '▶ ' : ''}{d.song?.title} — {d.song?.artist}</span></span>,
-    icon: d.active && d.playing ? 'speaker' : 'devices',
+    label: <span className="dev-item"><span className="ellipsis"><b>{d.name}</b></span><span className="muted xsmall ellipsis">{isLive(d) ? '▶ ' : ''}{d.song?.title} — {d.song?.artist}</span></span>,
+    icon: isLive(d) ? (d.kind === 'app' ? 'smartphone' : 'speaker') : 'devices',
     onSelect: () => takeOver(d).then(() => toast(`Continuing from ${d.name}`)).catch(e => toast(errMsg(e), 'err')),
     hint: 'Play here',
   }))]

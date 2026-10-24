@@ -109,9 +109,15 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 type deviceView struct {
 	store.Device
 	Song   *store.Song `json:"song"`
-	Active bool        `json:"active"` // reported in the last two minutes
+	Active bool        `json:"active"` // reported in the last two minutes (an app: still inside the song)
 	Length int         `json:"queue_length"`
+	Kind   string      `json:"kind"`        // web | app (a Subsonic app through /rest: no remote control)
+	Until  string      `json:"until,omitempty"` // an app's song ends about then, unless it says otherwise
 }
+
+// appDevice: a Subsonic app seen through the gateway. It reports once per song
+// ("now playing"), never its position or a pause.
+func appDevice(id string) bool { return strings.HasPrefix(id, "subsonic:") }
 
 func (s *Server) deviceList(ctx context.Context, uid int64) []deviceView {
 	ds, err := s.store.Devices(ctx, uid)
@@ -130,8 +136,20 @@ func (s *Server) viewDevice(ctx context.Context, uid int64, d store.Device) devi
 	if d.SongID != "" {
 		v.Song, _ = s.store.GetSong(ctx, uid, d.SongID)
 	}
+	v.Kind = "web"
 	if t, err := time.Parse(time.RFC3339Nano, d.UpdatedAt); err == nil {
 		v.Active = time.Since(t) < 2*time.Minute
+		if appDevice(d.ID) {
+			// playing while the song can still be playing: from its start, its length and a little
+			v.Kind = "app"
+			end := t.Add(30 * time.Second)
+			if v.Song != nil && v.Song.Duration > 0 {
+				end = t.Add(time.Duration(v.Song.Duration)*time.Second + 30*time.Second)
+			}
+			v.Active = d.Playing && time.Now().Before(end)
+			v.Playing = v.Active
+			v.Until = end.UTC().Format(time.RFC3339Nano)
+		}
 	}
 	var q []string
 	if json.Unmarshal([]byte(d.Queue), &q) == nil {

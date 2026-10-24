@@ -96,6 +96,28 @@ func TestGatewaySignsInWithPocketPassword(t *testing.T) {
 		t.Fatalf("server scrobbles = %v", got)
 	}
 
+	// "now playing" from the app: a device that plays for the song's length, without remote control
+	np := tokenAuth("ana.p", pw)
+	np.Set("id", "s1")
+	np.Set("submission", "false")
+	if _, r := gatewayCall(t, h, "scrobble", np); r["status"] != "ok" {
+		t.Fatalf("now playing: %v", r)
+	}
+	_, devs := call(t, h, tok["ana"], "GET", "/api/v1/devices", nil)
+	var app map[string]any
+	for _, d := range devs["_list"].([]any) {
+		if m := d.(map[string]any); m["kind"] == "app" {
+			app = m
+		}
+	}
+	if app == nil || app["name"] != "TestApp" || app["active"] != true || app["playing"] != true || app["queue_length"].(float64) != 1 || app["until"] == nil {
+		t.Fatalf("app device = %v", devs)
+	}
+	_, devs = call(t, h, tok["ben"], "GET", "/api/v1/devices", nil)
+	if l, _ := devs["_list"].([]any); len(l) != 0 {
+		t.Fatalf("ben sees ana's app: %v", devs)
+	}
+
 	// renewing replaces the password; disabling shuts the door
 	_, out = call(t, h, tok["ana"], "POST", "/api/v1/subsonic/password", nil)
 	if _, r := gatewayCall(t, h, "ping", tokenAuth("ana.p", pw)); r["status"] != "failed" {

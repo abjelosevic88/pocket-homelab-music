@@ -49,6 +49,7 @@ export interface Connection {
 export interface Device {
   id: string; name: string; song_id: string; queue_index: number; position_ms: number; playing: boolean; updated_at: string
   song: Song | null; active: boolean; queue_length: number
+  kind: 'web' | 'app'; until?: string // app = a Subsonic app through /rest: reports once per song, can't be controlled
 }
 
 export interface Request {

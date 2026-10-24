@@ -255,7 +255,9 @@ func (s *Server) gatewayScrobble(ctx context.Context, u *store.User, mc *musicCo
 		}
 		so := songs[0]
 		if !submission {
-			d := &store.Device{ID: "subsonic:" + strings.ToLower(device), Name: device, SongID: so.ID, Playing: true}
+			// the song as a one-song queue at 0 ms: "Play here" continues it from where the app should be now
+			q, _ := json.Marshal([]string{so.ID})
+			d := &store.Device{ID: "subsonic:" + strings.ToLower(device), Name: device, SongID: so.ID, Queue: string(q), Playing: true}
 			if err := s.store.SaveDevice(ctx, u.ID, d); err == nil {
 				if cur, err := s.store.GetDevice(ctx, u.ID, d.ID); err == nil {
 					s.hub.send(u.ID, "device", s.viewDevice(ctx, u.ID, *cur))

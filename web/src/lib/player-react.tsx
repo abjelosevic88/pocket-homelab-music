@@ -63,12 +63,24 @@ export function useDevices() {
 }
 export function startLive() { wireLive() }
 
+/** Is a device playing right now? An app counts until its song can have ended; a browser while it reports. */
+export function isLive(d: Device): boolean {
+  if (d.kind === 'app') return !!d.until && Date.now() < Date.parse(d.until)
+  return d.active && d.playing
+}
+
+/** Re-render now and then, so "Playing on …" goes away when it's over. */
+export function useTick(ms = 15000) {
+  const [, set] = useState(0)
+  useEffect(() => { const t = setInterval(() => set(n => n + 1), ms); return () => clearInterval(t) }, [ms])
+}
+
 /** Send a command to another device. */
 export const remote = (id: string, action: string, value = 0) => api.post(`${V1}/devices/${id}/command`, { action, value, from: deviceId() }).catch(() => {})
 
 /** Move another device's queue here and pause it there. */
 export async function takeOver(d: Device) {
   const r = await api.get<{ songs: Song[] }>(`${V1}/devices/${encodeURIComponent(d.id)}/queue`)
-  remote(d.id, 'pause')
+  if (d.kind !== 'app') remote(d.id, 'pause') // an app can't be told to stop
   player.takeOver(r.songs, d.queue_index, d.position_ms + (d.playing ? Date.now() - Date.parse(d.updated_at) : 0), d.name)
 }
