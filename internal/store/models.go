@@ -251,6 +251,23 @@ type Settings struct {
 	ListenBrainzToken string `json:"listenbrainz_token"`
 	ListenBrainzURL   string `json:"listenbrainz_url"`
 	LyricsOnline      bool   `json:"lyrics_online"` // look up LRCLIB when the server has no lyrics
+	LyricsPrefer      string `json:"lyrics_prefer"` // synced (synced wins, wherever from) | library (the files' own first)
+	LyricsSize        string `json:"lyrics_size"`   // s | m | l
+	LyricsAuto        bool   `json:"lyrics_auto"`   // Now Playing opens on the lyrics when a song has synced ones
+
+	// Daily mixes also written as playlists on the music server (for Subsonic apps).
+	MixesToServer bool `json:"mixes_to_server"`
+
+	// The lyrics library (box-wide, admins): synced lyrics fetched from LRCLIB
+	// and saved as .lrc files next to the songs, so every player shows them.
+	LyricsWriter    bool   `json:"lyrics_writer"`
+	LyricsHour      int    `json:"lyrics_hour"`       // local hour of the nightly run
+	LyricsRetryDays int    `json:"lyrics_retry_days"` // ask again for songs LRCLIB did not know after this many days
+	LyricsPlain     string `json:"lyrics_plain"`      // tag (FLAC UNSYNCEDLYRICS) | lrc (untimed .lrc) | skip: lyrics without timings
+	LyricsDelayMS   int    `json:"lyrics_delay_ms"`   // pause between LRCLIB requests
+	LyricsOrder     string `json:"lyrics_order"`      // added (newest songs first) | path
+	LyricsNotify    bool   `json:"lyrics_notify"`     // push a summary when a run found lyrics
+	LyricsRescan    bool   `json:"lyrics_rescan"`     // ask the music server to scan after a run that wrote files
 
 	// "Make a mix" turns a sentence into a playlist: Pocket AI through Core,
 	// or an OpenAI-compatible API with the person's own key.

@@ -1,5 +1,6 @@
 import { useParams } from 'react-router-dom'
 import { api } from '../lib/api'
+import { OfflineButton } from '../components/OfflineButton'
 import { V1, longDuration, tz } from '../lib/music'
 import { player } from '../lib/player-react'
 import type { Mix, Song } from '../lib/types'
@@ -50,6 +51,7 @@ export function MixPage() {
           <p className="hero-desc">{m.description}</p>
           <p className="hero-meta"><span>{songs.length} songs, {longDuration(m.duration)}</span></p>
           <HeroActions onPlay={() => player.playSongs(songs, 0, source)} onShuffle={() => player.playSongs(songs, -1, source, true)}>
+            <OfflineButton songs={songs} group={{ key: `mix:${m.key}`, name: m.name, kind: 'mix' }} />
             <button type="button" className="btn lg" onClick={() => api.post(`${V1}/playlists`, { name: `${m.name} · ${new Date().toLocaleDateString()}`, comment: m.description, song_ids: songs.map(s => s.id) }).then(() => window.dispatchEvent(new CustomEvent('pmu:playlists')))}><Icon name="playlist" size={16} />Save as playlist</button>
           </HeroActions>
         </div>

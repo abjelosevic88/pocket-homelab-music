@@ -45,7 +45,11 @@ func (s *Server) publicSettings(ctx context.Context, u *store.User, st store.Set
 		"lidarr_mode": lidarrMode, "lidarr_url": st.LidarrURL, "lidarr_key": mask(st.LidarrKey),
 		"maloja_url": st.MalojaURL, "maloja_default": s.cfg.MalojaURL, "listenbrainz_user": st.ListenBrainzUser, "listenbrainz_token": mask(st.ListenBrainzToken),
 		"lyrics_online": st.LyricsOnline, "lyrics_available": s.cfg.LyricsURL != "",
-		"ai_provider": st.AIProvider, "ai_pocket_model": st.AIPocketModel, "openai_api_key": mask(st.OpenAIKey), "openai_model": st.OpenAIModel, "openai_base_url": st.OpenAIBaseURL,
+		"lyrics_prefer": st.LyricsPrefer, "lyrics_size": st.LyricsSize, "lyrics_auto": st.LyricsAuto, "mixes_to_server": st.MixesToServer,
+		"lyrics_writer": st.LyricsWriter, "lyrics_hour": st.LyricsHour, "lyrics_retry_days": st.LyricsRetryDays, "lyrics_plain": st.LyricsPlain,
+		"lyrics_delay_ms": st.LyricsDelayMS, "lyrics_order": st.LyricsOrder, "lyrics_notify": st.LyricsNotify, "lyrics_rescan": st.LyricsRescan,
+		"lyrics_library": s.cfg.MusicDir != "",
+		"ai_provider":    st.AIProvider, "ai_pocket_model": st.AIPocketModel, "openai_api_key": mask(st.OpenAIKey), "openai_model": st.OpenAIModel, "openai_base_url": st.OpenAIBaseURL,
 		"setup_complete": st.SetupComplete, "base_url": s.cfg.BaseURL, "navidrome_url": s.cfg.NavidromeURL != "", "navidrome_public_url": s.cfg.NavidromePublicURL,
 	}
 }
@@ -141,6 +145,25 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 	text("listenbrainz_user", &cur.ListenBrainzUser, in.ListenBrainzUser)
 	secret("listenbrainz_token", &cur.ListenBrainzToken, in.ListenBrainzToken)
 	boolIn("lyrics_online", &cur.LyricsOnline, in.LyricsOnline)
+	oneOf("lyrics_prefer", &cur.LyricsPrefer, in.LyricsPrefer, "synced", "library")
+	oneOf("lyrics_size", &cur.LyricsSize, in.LyricsSize, "s", "m", "l")
+	boolIn("lyrics_auto", &cur.LyricsAuto, in.LyricsAuto)
+	mixesWas := cur.MixesToServer
+	boolIn("mixes_to_server", &cur.MixesToServer, in.MixesToServer)
+	// the lyrics library is box-wide: admins only, silently ignored for everyone else
+	boxChanged := false
+	if isAdmin {
+		before := cur
+		boolIn("lyrics_writer", &cur.LyricsWriter, in.LyricsWriter)
+		intIn("lyrics_hour", &cur.LyricsHour, in.LyricsHour, 0, 23)
+		intIn("lyrics_retry_days", &cur.LyricsRetryDays, in.LyricsRetryDays, 1, 365)
+		oneOf("lyrics_plain", &cur.LyricsPlain, in.LyricsPlain, "tag", "lrc", "skip")
+		intIn("lyrics_delay_ms", &cur.LyricsDelayMS, in.LyricsDelayMS, 0, 10000)
+		oneOf("lyrics_order", &cur.LyricsOrder, in.LyricsOrder, "added", "path")
+		boolIn("lyrics_notify", &cur.LyricsNotify, in.LyricsNotify)
+		boolIn("lyrics_rescan", &cur.LyricsRescan, in.LyricsRescan)
+		boxChanged = before != cur
+	}
 	if keys["ai_provider"] {
 		if !validAIProvider(in.AIProvider) {
 			writeErr(w, http.StatusBadRequest, "AI is automatic, Pocket AI or OpenAI")
@@ -162,7 +185,7 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, err, "save settings")
 		return
 	}
-	if isAdmin && keys["title"] {
+	if isAdmin && (keys["title"] || boxChanged) {
 		if err := s.store.SaveBoxSettings(r.Context(), cur); err != nil {
 			s.fail(w, err, "save settings")
 			return
@@ -171,6 +194,16 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 	// genre choices change what mixes contain
 	if keys["skip_ambient"] || keys["ambient_genres"] || keys["hide_genres"] {
 		_ = s.store.CacheDelete(r.Context(), fmt.Sprintf("mixes:%d:", me.ID))
+	}
+	// mixes on the server: write them now (or take them away)
+	if cur.MixesToServer != mixesWas {
+		uid := me.ID
+		_ = s.store.CacheDelete(r.Context(), fmt.Sprintf("mixpub:%d", uid))
+		s.job(fmt.Sprintf("mixpub:%d", uid), func(ctx context.Context) {
+			if err := s.publishMixes(ctx, uid); err != nil && !isNoMusic(err) {
+				s.log.Warn("mixes to server", "user", uid, "err", err)
+			}
+		})
 	}
 	writeJSON(w, http.StatusOK, s.publicSettings(r.Context(), me, cur))
 }

@@ -2,7 +2,7 @@
    Pocket Music — covers, cards, song lists, the player, Now Playing, stats
    ========================================================================== */
 
-.block { display: block; }
+.block:not(.btn) { display: block; }
 @media (max-width: 767px) { .hide-mobile { display: none !important; } }
 
 /* ---------- covers ---------- */
@@ -340,7 +340,14 @@ span.hero-cover { display: block; }
 .np-lyrics .ly.past { color: rgba(255, 255, 255, .32); }
 .np-lyrics .ly.on { color: #fff; transform: scale(1.02); }
 .np-lyrics .ly.gap { opacity: .6; }
-.ly-src { margin-top: 24px; color: rgba(255, 255, 255, .5) !important; }
+.ly-src { margin-top: 24px; color: rgba(255, 255, 255, .5) !important; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.ly-src .ok-text { display: inline-flex; align-items: center; gap: 4px; }
+.ly-save { background: rgba(255, 255, 255, .1); border-color: rgba(255, 255, 255, .18); color: #fff; }
+.ly-save:hover { background: rgba(255, 255, 255, .18); }
+.np-lyrics.size-s .ly { font-size: clamp(17px, 1.7vw, 24px); margin-bottom: 12px; }
+.np-lyrics.size-l .ly { font-size: clamp(28px, 3.2vw, 46px); margin-bottom: 22px; }
+.np-lyrics.size-s:not(.synced) .ly { font-size: clamp(15px, 1.4vw, 19px); }
+.np-lyrics.size-l:not(.synced) .ly { font-size: clamp(21px, 2.2vw, 30px); }
 .np-nolyrics { display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 6px; color: rgba(255, 255, 255, .85); }
 .np-nolyrics .muted { color: rgba(255, 255, 255, .55); max-width: 380px; }
 .np-lyrics:has(.np-nolyrics), .np-lyrics:has(> .loading) { padding: 0; mask-image: none; display: grid; place-items: center; }
@@ -507,3 +514,12 @@ a.top-row:hover { background: var(--hover); }
   .home-hero > .row .btn { flex: 1; }
 }
 .np.mobile .view-now .np-art-col { justify-content: center; }
+
+/* ---------- downloads ---------- */
+.offline-btn.is-on { color: var(--accent); }
+.song-offline { display: inline-block; color: var(--accent); margin-right: 5px; vertical-align: -1px; }
+.dl-quality { gap: 10px; }
+.dl-groups { display: grid; gap: 4px; }
+.dl-group { display: flex; align-items: center; gap: 12px; padding: 8px 10px; border-radius: 10px; }
+.dl-group:hover { background: var(--hover); }
+.dl-name { font-weight: 650; display: block; color: var(--text); }

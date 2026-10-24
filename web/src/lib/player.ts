@@ -5,6 +5,7 @@
 import { api } from './api'
 import { V1, albumCover, deviceId, deviceName, isPhone } from './music'
 import type { Settings, Song } from './types'
+import { forget, isOffline, offlineURL, queuePlay, setOfflineFormat } from './offline'
 
 export type Repeat = 'off' | 'all' | 'one'
 export interface Source { kind: 'album' | 'artist' | 'playlist' | 'mix' | 'radio' | 'songs' | 'search' | 'queue' | 'genre' | 'device'; name: string; link?: string }
@@ -100,12 +101,13 @@ export class Player {
     return b.length ? this.offset + b.end(b.length - 1) : this.offset
   }
 
-  configure(s: Settings) { this.settings = s; this.applyVolume() }
+  configure(s: Settings) { this.settings = s; setOfflineFormat(s.format); this.applyVolume() }
 
   // ---------- what plays ----------
 
   /** The streaming quality in effect: this device's choice, else the person's, "auto" decided per song. */
   qualityFor(song: Song): string {
+    if (isOffline(song.id)) return 'original' // downloaded: a whole file on this device, seekable
     const q = this.state.quality || this.settings?.quality || 'auto'
     // formats no browser plays (DSD, Monkey's Audio, WavPack, WMA) — or this one couldn't — are transcoded
     if (UNPLAYABLE.has(song.suffix) || this.originalFailed.has(song.id)) return q === 'auto' || q === 'original' ? '320' : q
@@ -116,6 +118,7 @@ export class Player {
   }
 
   private srcFor(song: Song, offset = 0): { url: string; transcoded: boolean } {
+    if (isOffline(song.id)) return { url: offlineURL(song.id), transcoded: false }
     const q = this.qualityFor(song)
     if (q === 'original') return { url: `${V1}/stream/${encodeURIComponent(song.id)}`, transcoded: false }
     const f = this.formatFallback || this.settings?.format || 'mp3'
@@ -417,6 +420,12 @@ export class Player {
   private onError() {
     const song = this.current
     const code = this.el.error?.code
+    if (song && isOffline(song.id) && this.el.src.includes('/offline/song/')) {
+      // the browser dropped the downloaded file: stream it instead
+      forget(song.id)
+      this.load(this.state.index, true, this.position, true)
+      return
+    }
     if (song && !this.transcoded && code && code >= 3 && !this.originalFailed.has(song.id)) {
       // the browser can't decode the original file: let the server transcode it
       this.originalFailed.add(song.id)
@@ -458,7 +467,9 @@ export class Player {
 
   private sendListen(song: Song) {
     this.errors = 0
-    api.post(`${V1}/listens`, { song_id: song.id, played_at: this.startedAt, ms_played: Math.round(this.heardMs), device: deviceName() }).catch(() => {})
+    const play = { song_id: song.id, played_at: this.startedAt, ms_played: Math.round(this.heardMs), device: deviceName() }
+    // without a network the play waits on this device and is sent when it's back
+    api.post(`${V1}/listens`, play).catch(e => { if (!(e as { status?: number }).status) queuePlay(play) })
   }
 
   /** At a song change: a song played long enough but not yet counted (short songs) counts now. */

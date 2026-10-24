@@ -31,9 +31,10 @@ type lyricLine struct {
 }
 
 type lyricsOut struct {
-	Source string      `json:"source"` // server | lrclib | ""
-	Synced bool        `json:"synced"`
-	Lines  []lyricLine `json:"lines"`
+	Source   string      `json:"source"` // server | lrclib | ""
+	Synced   bool        `json:"synced"`
+	Lines    []lyricLine `json:"lines"`
+	Saveable bool        `json:"saveable,omitempty"` // can be written next to the song (admins, music folder mounted)
 }
 
 var lrcTime = regexp.MustCompile(`\[(\d{1,3}):(\d{1,2})(?:[.:](\d{1,3}))?\]`)
@@ -136,11 +137,14 @@ func (s *Server) handleLyrics(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	st, _ := s.store.GetSettings(ctx, u.ID)
-	if !best.Synced && st.LyricsOnline && s.cfg.LyricsURL != "" {
+	// "library" keeps the files' own lyrics even when they have no timings
+	if st.LyricsOnline && s.cfg.LyricsURL != "" && (best.Source == "" || (!best.Synced && st.LyricsPrefer != "library")) {
 		if got, ok := s.lrclib(ctx, so); ok && (got.Synced || best.Source == "") {
 			best = got
 		}
 	}
+	// admins may write online lyrics next to the song for every player
+	best.Saveable = best.Source == "lrclib" && u.Role == "admin" && s.cfg.MusicDir != ""
 	w.Header().Set("Cache-Control", "private, max-age=3600")
 	writeJSON(w, http.StatusOK, best)
 }

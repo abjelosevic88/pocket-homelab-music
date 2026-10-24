@@ -20,6 +20,7 @@ const YOURS: NavItem[] = [
   { to: '/loved', label: 'Loved', icon: 'heart' },
   { to: '/history', label: 'History', icon: 'history' },
   { to: '/stats', label: 'Stats', icon: 'bar' },
+  { to: '/downloads', label: 'Downloads', icon: 'check-circle' },
 ]
 const DISCOVER: NavItem[] = [
   { to: '/releases', label: 'New releases', icon: 'compass' },

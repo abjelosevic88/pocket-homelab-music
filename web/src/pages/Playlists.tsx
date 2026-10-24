@@ -1,5 +1,6 @@
 // Playlists (kept on the music server) and smart playlists (rules, refreshed daily).
 import React, { useEffect, useState } from 'react'
+import { OfflineButton } from '../components/OfflineButton'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { api } from '../lib/api'
 import { V1, coverURL, longDuration } from '../lib/music'
@@ -76,6 +77,7 @@ export function Playlist() {
           </p>
           {smart?.error && <p className="danger-text small">{smart.error}</p>}
           <HeroActions onPlay={() => player.playSongs(songs, 0, source)} onShuffle={() => player.playSongs(songs, -1, source, true)}>
+            <OfflineButton songs={songs} group={{ key: `playlist:${p.id}`, name: p.name, kind: 'playlist' }} />
             {smart && <button type="button" className="btn lg" onClick={() => navigate(`/smart/${smart.id}`)}><Icon name="filter" size={16} />Rules</button>}
             {smart && <button type="button" className="btn lg icon-only" onClick={refresh} disabled={refreshing} aria-label="Refresh now" title="Refresh now">{refreshing ? <Spinner /> : <Icon name="refresh" size={17} />}</button>}
             {p.mine && <MenuTrigger items={() => [

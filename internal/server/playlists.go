@@ -44,8 +44,15 @@ func (s *Server) handlePlaylists(w http.ResponseWriter, r *http.Request) {
 			bySmart[sp.PlaylistID] = sp.ID
 		}
 	}
+	mixPls := map[string]bool{} // today's mixes written to the server: shown under Mixes
+	for _, id := range s.mixPlaylists(ctx, uid) {
+		mixPls[id] = true
+	}
 	out := make([]playlistView, 0, len(pls))
 	for _, p := range pls {
+		if mixPls[p.ID] {
+			continue
+		}
 		out = append(out, playlistView{Playlist: p, Mine: strings.EqualFold(p.Owner, mc.c.User), SmartID: bySmart[p.ID], Covers: []string{}})
 	}
 	sort.SliceStable(out, func(i, j int) bool { return out[i].Changed > out[j].Changed })

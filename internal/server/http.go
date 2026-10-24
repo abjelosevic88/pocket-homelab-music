@@ -35,6 +35,9 @@ func (s *Server) Router() http.Handler {
 		r.Get("/metrics", s.handleMetrics)
 	}
 
+	// Subsonic apps sign in here with a Pocket Music app password (gateway.go)
+	r.HandleFunc("/rest/*", s.handleGateway)
+
 	r.Route("/api/v1", func(r chi.Router) {
 		// long-lived: audio, covers and live events must not hit the request timeout
 		r.Group(func(r chi.Router) {
@@ -80,6 +83,10 @@ func (s *Server) Router() http.Handler {
 				r.Get("/genres", s.handleGenres)
 				r.Get("/search", s.handleSearch)
 				r.Get("/lyrics/{id}", s.handleLyrics)
+				r.Post("/lyrics/{id}/save", s.handleLyricsSave)
+				r.Get("/lyrics-library", s.handleLyricsLibrary)
+				r.Post("/lyrics-library/run", s.handleLyricsLibraryRun)
+				r.Post("/lyrics-library/stop", s.handleLyricsLibraryStop)
 				r.Post("/star", s.handleStar)
 				r.Post("/rate", s.handleRate)
 
@@ -117,6 +124,10 @@ func (s *Server) Router() http.Handler {
 				r.Post("/devices/{id}/command", s.handleDeviceCommand)
 				r.Delete("/devices/{id}", s.handleDeleteDevice)
 				r.Get("/server/now-playing", s.handleServerNowPlaying)
+
+				r.Get("/subsonic", s.handleGatewayInfo)
+				r.Post("/subsonic/password", s.handleGatewayPassword)
+				r.Delete("/subsonic", s.handleGatewayDelete)
 
 				r.Get("/lidarr/status", s.handleLidarrStatus)
 				r.Get("/lidarr/search", s.handleLidarrSearch)

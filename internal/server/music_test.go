@@ -120,8 +120,31 @@ func (f *fakeSubsonic) serve(w http.ResponseWriter, r *http.Request) {
 		}
 		f.playlists[id] = q["songId"]
 		reply(map[string]any{"playlist": map[string]any{"id": id, "name": q.Get("name"), "owner": user}})
-	case "updatePlaylist":
+	case "updatePlaylist", "startScan":
 		reply(map[string]any{})
+	case "getPlaylist":
+		if ids, ok := f.playlists[q.Get("id")]; ok && f.owners[q.Get("id")] == user {
+			reply(map[string]any{"playlist": map[string]any{"id": q.Get("id"), "songCount": len(ids)}})
+			return
+		}
+		fail(70, "not found")
+	case "deletePlaylist":
+		if f.owners[q.Get("id")] != user {
+			fail(70, "not found")
+			return
+		}
+		delete(f.playlists, q.Get("id"))
+		delete(f.owners, q.Get("id"))
+		reply(map[string]any{})
+	case "getUser":
+		if q.Get("username") != user {
+			fail(50, "not authorized")
+			return
+		}
+		reply(map[string]any{"user": map[string]any{"username": user}})
+	case "stream":
+		w.Header().Set("Content-Type", "audio/mpeg")
+		_, _ = io.WriteString(w, "AUDIO:"+user+":"+q.Get("id"))
 	default:
 		fail(0, "unsupported "+method)
 	}

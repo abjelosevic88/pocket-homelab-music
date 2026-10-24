@@ -87,3 +87,32 @@ An artist page asks Lidarr for the artist's whole discography (by MusicBrainz id
 your library: missing albums are greyed and one click from being searched for. New releases come from Lidarr's
 calendar, filtered to artists you have. Requests are followed every 15 minutes; when every track has arrived the
 person gets a push and the music server is asked to scan.
+
+## Subsonic apps
+
+Phone and car apps speak Subsonic, so Pocket Music answers it at `/rest/*` as a thin gateway: the app signs in with
+the person's Pocket app login (its own generated password, sealed like every other secret), and each call is
+forwarded to the music server with that person's own account — streams with their byte ranges, everything else as
+a form POST. Only two things are looked at on the way: `scrobble` (a finished play goes into the person's history,
+"now playing" makes the app a device) and a `username` parameter naming the Pocket login, which becomes the server
+account's name. The music server's password never leaves the box, and turning the app login off or renewing it
+cuts every app at once without touching Navidrome.
+
+## Offline
+
+A service worker keeps the app shell, the build files, cover art (trimmed) and the last answer of every API page,
+so Pocket Music opens without a network. Downloads are whole files in Cache Storage under `/offline/song/<id>`,
+fetched once (original, or transcoded at 320/256/128 when chosen) and served by the worker with byte ranges —
+Safari won't play audio without them. The player treats a downloaded song as an original file: seeking is local,
+nothing is streamed. If the browser evicted a file, the player forgets it and streams instead. Plays made offline
+wait in localStorage and are sent when the network is back.
+
+## The lyrics library
+
+A nightly job walks the music folder itself rather than asking the server for paths (Subsonic servers report
+made-up paths unless told otherwise), reads artist, title, album and — for FLAC — the exact length from the files,
+and asks LRCLIB for every song without a `.lrc`. Synced lyrics become `.lrc` files; plain ones go into the FLAC
+`UNSYNCEDLYRICS` tag (the comment block is rewritten into a temp file next to the song, the audio frames copied
+byte for byte, then renamed over it), an untimed `.lrc`, or nowhere. Each answer is remembered per file, so a
+song LRCLIB doesn't know is asked again only after the retry days; a 5xx is retried a few times and never
+recorded, and eight failures in a row end the run early.

@@ -49,6 +49,8 @@ type Server struct {
 
 	jobsMu sync.Mutex
 	jobs   map[string]bool // background jobs running (imports, smart refreshes)
+
+	lyr lyricsJob // the lyrics library run
 }
 
 // New creates a server.
@@ -207,6 +209,8 @@ func (s *Server) janitor(ctx context.Context) {
 			s.followRequests(ctx)
 			s.refreshDueSmart(ctx)
 			s.weeklyRecaps(ctx)
+			s.scheduledLyrics(ctx)
+			s.publishMixesDaily(ctx)
 		}
 	}
 }

@@ -1,6 +1,7 @@
 // Building blocks of every music page: covers, cards, shelves, the song table,
 // the song menu and "Add to playlist".
 import React, { useEffect, useMemo, useRef, useState } from 'react'
+import { isOffline, useOffline } from '../lib/offline'
 import { Link, useNavigate } from 'react-router-dom'
 import { api } from '../lib/api'
 import { V1, albumCover, artistImage, clock, coverURL, hueFor, qualityOf } from '../lib/music'
@@ -190,7 +191,7 @@ export function songMenu(s: Song, nav: (to: string) => void, opts: { onAddTo: ()
     'sep',
     { label: 'Go to album', icon: 'album', onSelect: () => nav(`/albums/${s.album_id}`), disabled: !s.album_id },
     { label: 'Go to artist', icon: 'user', onSelect: () => nav(`/artists/${s.artist_id || s.album_artist_id}`), disabled: !(s.artist_id || s.album_artist_id) },
-    { label: 'Download', icon: 'download', onSelect: () => { location.href = `${V1}/download/${encodeURIComponent(s.id)}` } },
+    { label: 'Download the file', icon: 'download', onSelect: () => { location.href = `${V1}/download/${encodeURIComponent(s.id)}` } },
     ...(opts.onRemove ? ['sep' as const, { label: 'Remove from playlist', icon: 'trash', danger: true, onSelect: opts.onRemove }] : []),
   ]
 }
@@ -218,6 +219,7 @@ export function SongTable({ songs, source, numbered = 'index', showAlbum = true,
   const [menu, setMenu] = useState<{ a: Anchor; i: number } | null>(null)
   const [addTo, setAddTo] = useState<Song[] | null>(null)
   const multiDisc = discs && new Set(songs.map(s => s.disc)).size > 1
+  useOffline() // re-render when downloads change
   const play = (i: number) => player.playSongs(songs, i, source)
   let lastDisc = -1
   return (
@@ -254,7 +256,7 @@ function SongRow({ s, i, n, showAlbum, showArtist, showCover, showPlays, onPlay,
       </span>
       {showCover && <Cover src={albumCover(s.album_id, 80)} size={38} className="song-cover" label={s.album} />}
       <span className="song-main" role="cell">
-        <span className="song-title ellipsis">{s.title}</span>
+        <span className="song-title ellipsis">{isOffline(s.id) && <Icon name="check-circle" size={12} className="song-offline" aria-label="On this device" />}{s.title}</span>
         {showArtist && <span className="song-artist ellipsis">{s.artist_id ? <Link to={`/artists/${s.artist_id}`}>{s.artist}</Link> : s.artist}</span>}
       </span>
       {showAlbum && <span className="song-album ellipsis" role="cell"><Link to={`/albums/${s.album_id}`}>{s.album}</Link></span>}

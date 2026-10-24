@@ -1,4 +1,5 @@
 // The app shell: sidebar, top bar, search palette, shortcuts, the player — the Pocket Calendar layout.
+import { signedOut } from '../lib/offline'
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react'
 import { Outlet, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { api, V1 } from '../lib/api'
@@ -169,7 +170,7 @@ function TopBar({ onMenu, onPalette, mobile, compact, sidebarOpen, crumb }: { on
   const navigate = useNavigate()
   const loc = useLocation()
   const [section, sectionTo] = SECTION[loc.pathname.split('/')[1] || ''] || ['', '/']
-  const signOut = async () => { await api.post(`${V1}/auth/logout`).catch(() => {}); player.pause(); setUser(null); navigate('/login') }
+  const signOut = async () => { await api.post(`${V1}/auth/logout`).catch(() => {}); player.pause(); signedOut(); setUser(null); navigate('/login') }
   const avatarMenu = (): MenuItem[] => [
     { heading: user?.name || user?.email || '' },
     { label: 'Profile', icon: 'user', onSelect: () => navigate('/settings/profile') },

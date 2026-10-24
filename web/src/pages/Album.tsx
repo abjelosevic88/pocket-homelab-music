@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
+import { OfflineButton } from '../components/OfflineButton'
 import { api } from '../lib/api'
 import { V1, albumCover, longDuration } from '../lib/music'
 import { player } from '../lib/player-react'
@@ -47,6 +48,7 @@ export default function Album() {
           {data.genres.length > 0 && <div className="chips">{data.genres.map(g => <Link key={g} to={`/genres/${encodeURIComponent(g)}`} className="chip">{g}</Link>)}</div>}
           <HeroActions onPlay={() => player.playSongs(songs, 0, source)} onShuffle={() => player.playSongs(songs, -1, source, true)}>
             <StarButton kind="album" id={a.id} starred={!!a.starred_at} size={19} className="lg" onChange={on => setData({ ...data, album: { ...a, starred_at: on ? 'now' : '' } })} />
+            <OfflineButton songs={songs} group={{ key: `album:${a.id}`, name: a.name, kind: 'album', cover: a.id }} />
             <MenuTrigger items={() => [
               { label: 'Play next', icon: 'queue', onSelect: () => { player.playNext(songs); toast('Plays next') } },
               { label: 'Add to queue', icon: 'list-plus', onSelect: () => { player.addToQueue(songs); toast('Added to the queue') } },

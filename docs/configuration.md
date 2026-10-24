@@ -55,6 +55,25 @@ What the server should have, for everything to work:
   and similar artists. Without it radio still works from your own listening and genres.
 - Lyrics: embedded or `.lrc` files next to the songs are used first; LRCLIB fills the gaps.
 
+## The lyrics library
+
+With the music folder mounted **read-write** (the same folder the music server reads), an admin can have synced
+lyrics fetched for the whole library and saved as `.lrc` files next to the songs (Settings → Lyrics): every
+player — Navidrome, phone apps, the car — shows them, offline too. Everything about it is a setting there: the
+nightly hour, how many days before a song LRCLIB didn't know is asked again, what happens to lyrics without timings
+(the FLAC `UNSYNCEDLYRICS` tag, an untimed `.lrc`, or nothing), the pause between requests, newest-first or A–Z, a
+scan request to the music server afterwards and a push with the result. A failing LRCLIB never counts as "not
+found". It reads tags from the files itself, so it works before anyone has connected an account.
+
+| Variable | Default | What it does |
+|---|---|---|
+| `MUSIC_DIR` | – | Where the music folder is mounted in this container (e.g. `/music`, mounted `rw`). Without it the lyrics library is off; "Save to library" in Now Playing needs it too. |
+
+Download hooks can fetch lyrics for a new album at once: `POST /api/v1/lyrics-library/run {"folder":"Artist/2024 - Album"}`
+with an admin's token (the folder is relative to the music folder). Moving from a script that kept its own list of
+songs already asked about (a JSON file of path → unix time, like `fetch-lyrics.py`'s `state.json`)?
+`pocket-music import-lyrics-state state.json /old/music/root` — with the app stopped — carries it over.
+
 ## Optional services
 
 | Variable | Default | What it does |

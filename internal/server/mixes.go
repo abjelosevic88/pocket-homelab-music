@@ -14,6 +14,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/abjelosevic88/pocket-homelab-music/internal/store"
+	"github.com/abjelosevic88/pocket-homelab-music/internal/subsonic"
 )
 
 // ---- mixes and radio ----
@@ -850,4 +851,125 @@ func (s *Server) handleShuffle(w http.ResponseWriter, r *http.Request) {
 		songs = append(songs, *so)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"songs": songs})
+}
+
+// ---- mixes as playlists on the music server ----
+//
+// With "Publish mixes as playlists" on, each morning the person's mixes are
+// written to their music server account as playlists ("Pocket · Daily Mix 1"
+// …), so phone and car apps that only speak Subsonic get them too. The same
+// playlists are reused day after day (their ids live in the cache under
+// mixpl:<uid>); a mix that is gone today loses its playlist, and switching
+// the option off deletes them all.
+
+const mixPlaylistPrefix = "Pocket · "
+
+func (s *Server) mixPlaylists(ctx context.Context, uid int64) map[string]string {
+	out := map[string]string{}
+	if raw, _, ok := s.store.CacheGet(ctx, fmt.Sprintf("mixpl:%d", uid)); ok {
+		_ = json.Unmarshal([]byte(raw), &out)
+	}
+	return out
+}
+
+func (s *Server) saveMixPlaylists(ctx context.Context, uid int64, m map[string]string) {
+	b, _ := json.Marshal(m)
+	_ = s.store.CachePut(ctx, fmt.Sprintf("mixpl:%d", uid), string(b))
+}
+
+// publishMixes writes the person's mixes of today to their server (or, with
+// the option off, removes the ones written before).
+func (s *Server) publishMixes(ctx context.Context, uid int64) error {
+	u, err := s.store.GetUser(ctx, uid)
+	if err != nil {
+		return err
+	}
+	st, _ := s.store.GetSettings(ctx, uid)
+	have := s.mixPlaylists(ctx, uid)
+	if !st.MixesToServer && len(have) == 0 {
+		return nil
+	}
+	mc, err := s.musicFor(ctx, u)
+	if err != nil {
+		return err
+	}
+	if !st.MixesToServer {
+		for key, id := range have {
+			if err := mc.c.DeletePlaylist(ctx, id); err == nil || subsonic.IsNotFound(err) {
+				delete(have, key)
+			}
+		}
+		s.saveMixPlaylists(ctx, uid, have)
+		return nil
+	}
+	_, off := time.Now().Zone()
+	mixes, err := s.mixesFor(ctx, uid, off/60)
+	if err != nil {
+		return err
+	}
+	today := map[string]bool{}
+	comment := "Made by Pocket Music for " + time.Now().Format("Monday 2 January") + " — it changes every day."
+	for _, m := range mixes {
+		if len(m.SongIDs) == 0 {
+			continue
+		}
+		today[m.Key] = true
+		name := mixPlaylistPrefix + m.Name
+		id := have[m.Key]
+		if id != "" {
+			if _, err := mc.c.Playlist(ctx, id); subsonic.IsNotFound(err) {
+				id = "" // deleted on the server: make it again
+			}
+		}
+		if id == "" {
+			pl, err := mc.c.CreatePlaylist(ctx, "", name, m.SongIDs)
+			if err != nil {
+				return err
+			}
+			id = pl.ID
+			have[m.Key] = id
+			s.saveMixPlaylists(ctx, uid, have)
+		} else if _, err := mc.c.CreatePlaylist(ctx, id, "", m.SongIDs); err != nil {
+			return err
+		}
+		desc := firstNonEmpty(m.Description, m.Name) + " · " + comment
+		_ = mc.c.UpdatePlaylist(ctx, id, subsonic.PlaylistUpdate{Name: &name, Comment: &desc})
+	}
+	for key, id := range have {
+		if !today[key] {
+			if err := mc.c.DeletePlaylist(ctx, id); err == nil || subsonic.IsNotFound(err) {
+				delete(have, key)
+			}
+		}
+	}
+	s.saveMixPlaylists(ctx, uid, have)
+	return nil
+}
+
+// publishMixesDaily runs publishMixes once a day per person, from 05:00 (janitor).
+func (s *Server) publishMixesDaily(ctx context.Context) {
+	if time.Now().Hour() < 5 {
+		return
+	}
+	ids, err := s.store.SettingsUsers(ctx)
+	if err != nil {
+		return
+	}
+	day := time.Now().Format("2006-01-02")
+	for _, uid := range ids {
+		if ctx.Err() != nil {
+			return
+		}
+		key := fmt.Sprintf("mixpub:%d", uid)
+		if v, _, ok := s.store.CacheGet(ctx, key); ok && v == day {
+			continue
+		}
+		if err := s.publishMixes(ctx, uid); err != nil {
+			if !isNoMusic(err) {
+				s.log.Warn("mixes to server", "user", uid, "err", err)
+			}
+			continue
+		}
+		_ = s.store.CachePut(ctx, key, day)
+	}
 }

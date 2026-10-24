@@ -10,7 +10,8 @@ const DefaultTitle = "Pocket Music"
 
 // boxKeys are the settings shared by the whole box (admin-only); every other
 // key is personal and lives in user_settings.
-var boxKeys = map[string]bool{"title": true, "setup_complete": true}
+var boxKeys = map[string]bool{"title": true, "setup_complete": true,
+	"lyrics_writer": true, "lyrics_hour": true, "lyrics_retry_days": true, "lyrics_plain": true, "lyrics_delay_ms": true, "lyrics_order": true, "lyrics_notify": true, "lyrics_rescan": true}
 
 // defaults returns the settings a person starts with.
 func (s *Store) defaults() Settings {
@@ -18,7 +19,8 @@ func (s *Store) defaults() Settings {
 		Quality: "auto", Format: "mp3", ReplayGain: "auto", Crossfade: 0, Scrobble: true, ScrobblePct: 50,
 		SkipAmbient: true, AmbientGenres: "Ambient, Dark Ambient, Drone, Sleep, Meditation, White Noise, Field Recording",
 		NotifyFormat: "apprise", NotifyArrived: true, NotifyWeekly: false,
-		LyricsOnline: true, ListenBrainzURL: "https://api.listenbrainz.org",
+		LyricsOnline: true, LyricsPrefer: "synced", LyricsSize: "m", LyricsAuto: false, ListenBrainzURL: "https://api.listenbrainz.org",
+		LyricsWriter: false, LyricsHour: 4, LyricsRetryDays: 14, LyricsPlain: "tag", LyricsDelayMS: 500, LyricsOrder: "added", LyricsNotify: true, LyricsRescan: true,
 		AIProvider: "auto"}
 }
 

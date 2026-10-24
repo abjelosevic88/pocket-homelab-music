@@ -38,11 +38,21 @@ that needs the server.
 | `GET /events` | Server-sent events: `devices`, `device`, `command`, `sync`, `listen`, `import` |
 | `GET /server/now-playing` | What your other Subsonic players are playing according to the server |
 
+## Lyrics
+
+| | |
+|---|---|
+| `GET /lyrics/{id}` | `{"source":"server|lrclib|","synced","lines":[{"t":<ms>,"text"}],"saveable"}` — the files' own first, LRCLIB after (as the person prefers) |
+| `POST /lyrics/{id}/save` | Admins: write the song's LRCLIB lyrics as a `.lrc` next to it (needs `MUSIC_DIR`) |
+| `GET /lyrics-library` | Admins: whether the music folder is writable, running, totals and the last 10 runs |
+| `POST /lyrics-library/run` · `{"folder":"Artist/Album"}` | Admins: start a whole-library run (202), or do one folder now and answer with its counts |
+| `POST /lyrics-library/stop` | Admins: stop a running run (the next one carries on) |
+
 ## Mixes, radio, playlists
 
 | | |
 |---|---|
-| `GET /mixes` · `GET /mixes/{key}` | Today's mixes (`daily-1`…`daily-4`, `repeat`, `rediscover`, `fresh`, `deep`, `capsule`, `loved`, `focus`) |
+| `GET /mixes` · `GET /mixes/{key}` | Today's mixes (with `mixes_to_server` on, also written to the music server each morning as “Pocket · …” playlists) (`daily-1`…`daily-4`, `repeat`, `rediscover`, `fresh`, `deep`, `capsule`, `loved`, `focus`) |
 | `POST /mix {"prompt","count","save":false}` | Make a mix from a sentence; `save` also creates a playlist |
 | `GET /radio?song=|album=|artist=|genre=&limit=` | Radio songs |
 | `GET /shuffle?genre=&decade=&starred=1&limit=` | The library shuffled, artists spread out |
@@ -69,6 +79,21 @@ that needs the server.
 | `POST /requests {"lidarr_id"}` or `{"foreign_id","artist_foreign_id","artist","title"}` | Monitor and search an album (adding its artist, monitoring nothing else, when needed) |
 | `GET /requests` · `DELETE /requests/{id}` | Your requests: requested, downloading, arrived, failed |
 | `GET /releases` | Lidarr's calendar for the last 45 and next 120 days |
+
+## Subsonic apps (`/rest/*`)
+
+Pocket Music answers the Subsonic API at `/rest/…` for phone, car and desktop apps (Amperfy, play:Sub, Symfonium,
+Substreamer, Feishin…). An app signs in with the person's **app login** — a user name and a generated password
+from Settings → Phone & car apps (token `t`+`s`, plain `p`/`enc:` or an OpenSubsonic `apiKey` = a `pmu_` token), never
+their music server password. Every call is passed to the music server with the person's own account; `scrobble`
+also lands in their history (device = the app's name) and "now playing" shows the app as a device. Ten wrong
+passwords in 15 minutes lock a user name for a while.
+
+| | |
+|---|---|
+| `GET /subsonic` | Your app login: user name, when it was made and last used, by which app |
+| `POST /subsonic/password {"username"}` | Make or renew the app password (returned once); the user name is optional |
+| `DELETE /subsonic` | Turn app sign-in off |
 
 ## Pocket Core app links
 

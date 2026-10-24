@@ -9,6 +9,7 @@ import { V1, albumCover, clock, qualityOf } from '../lib/music'
 import { player, remote, takeOver, useDevices, usePlayer, useProgress } from '../lib/player-react'
 import type { Device, Lyrics, Song } from '../lib/types'
 import { useApp } from '../lib/app-context'
+import { isOffline } from '../lib/offline'
 import { Icon } from './icons'
 import { Cover, StarButton, AddToPlaylist, startRadio, useCoverColor } from './music'
 import { type Anchor, Menu, type MenuItem, rectOf, useIsMobile, useToast, errMsg } from './ui'
@@ -217,6 +218,15 @@ function NowPlaying({ view, onView, onClose }: { view: 'now' | 'lyrics' | 'queue
   const s = p.current
   const mobile = useIsMobile()
   const color = useCoverColor(s ? albumCover(s.album_id, 64) : '')
+  const { settings } = useApp()
+  // phones show one pane at a time: open on the lyrics when the song has synced ones (a setting)
+  const openedOn = useRef(view)
+  useEffect(() => {
+    if (!mobile || !settings?.lyrics_auto || openedOn.current !== 'now' || !s) return
+    let gone = false
+    api.get<Lyrics>(`${V1}/lyrics/${encodeURIComponent(s.id)}`).then(l => { if (!gone && l.synced) onView('lyrics') }).catch(() => {})
+    return () => { gone = true }
+  }, [s?.id]) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     const h = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.stopPropagation(); onClose() } }
     window.addEventListener('keydown', h, true)
@@ -248,7 +258,7 @@ function NowPlaying({ view, onView, onClose }: { view: 'now' | 'lyrics' | 'queue
             <Transport size={24} big />
           </div>
           <div className="np-foot">
-            <span className="np-q">{qualityOf(s)}{p.quality && p.quality !== 'original' ? ` → ${p.quality} kbps` : ''}</span>
+            <span className="np-q">{isOffline(s.id) ? <>{qualityOf(s)} · on this device</> : <>{qualityOf(s)}{p.quality && p.quality !== 'original' ? ` → ${p.quality} kbps` : ''}</>}</span>
             <span className="grow" />
             {!mobile && <Volume />}
             <DevicesButton />
@@ -264,11 +274,21 @@ function NowPlaying({ view, onView, onClose }: { view: 'now' | 'lyrics' | 'queue
 function LyricsPane({ song, onlyLyrics }: { song: Song; onlyLyrics: boolean }) {
   const [ly, setLy] = useState<Lyrics | null>(null)
   const [err, setErr] = useState('')
+  const [saving, setSaving] = useState<'' | 'busy' | 'done'>('')
+  const { settings } = useApp()
+  const { toast } = useToast()
+  const saveToLibrary = async () => {
+    setSaving('busy')
+    try {
+      const r = await api.post<{ synced: boolean; file: string }>(`${V1}/lyrics/${encodeURIComponent(song.id)}/save`)
+      setSaving('done'); toast(`Saved next to the song (${r.file.split('/').pop()}) — every player shows it after the next scan`)
+    } catch (e) { setSaving(''); toast(errMsg(e), 'err') }
+  }
   const { position } = useProgress()
   const box = useRef<HTMLDivElement>(null)
   const [follow, setFollow] = useState(true)
   useEffect(() => {
-    setLy(null); setErr('')
+    setLy(null); setErr(''); setSaving('')
     api.get<Lyrics>(`${V1}/lyrics/${encodeURIComponent(song.id)}`).then(setLy).catch(e => setErr(errMsg(e)))
   }, [song.id])
   const ms = position * 1000
@@ -290,15 +310,20 @@ function LyricsPane({ song, onlyLyrics }: { song: Song; onlyLyrics: boolean }) {
   }, [follow])
   if (!onlyLyrics && ly && !ly.lines.length) return <QueuePane />
   return (
-    <div className={`np-lyrics ${ly?.synced ? 'synced' : ''}`} ref={box} onWheel={() => setFollow(false)} onTouchMove={() => setFollow(false)}>
+    <div className={`np-lyrics size-${settings?.lyrics_size || 'm'} ${ly?.synced ? 'synced' : ''}`} ref={box} onWheel={() => setFollow(false)} onTouchMove={() => setFollow(false)}>
       {!ly && !err && <div className="loading"><span className="spinner" /> Lyrics…</div>}
       {err && <p className="muted">{err}</p>}
-      {ly && !ly.lines.length && <div className="np-nolyrics"><Icon name="mic" size={28} /><p>No lyrics for this song.</p><p className="muted small">Lyrics come from the files (embedded or a .lrc next to the song) and, when switched on in Settings → Playback, from LRCLIB.</p></div>}
+      {ly && !ly.lines.length && <div className="np-nolyrics"><Icon name="mic" size={28} /><p>No lyrics for this song.</p><p className="muted small">Lyrics come from the files (embedded or a .lrc next to the song) and, when switched on in Settings → Lyrics, from LRCLIB.</p></div>}
       {ly?.lines.map((l, i) => (
         <p key={i} data-l={i} className={`ly ${i === active ? 'on' : ''} ${i < active ? 'past' : ''} ${l.text ? '' : 'gap'}`}
           onClick={() => { if (ly.synced && l.t >= 0) player.seek(l.t / 1000) }}>{l.text || '♪'}</p>
       ))}
-      {ly?.source && <p className="ly-src muted xsmall">{ly.source === 'lrclib' ? 'Lyrics from LRCLIB' : 'Lyrics from your library'}{ly.synced ? ' · tap a line to jump' : ''}</p>}
+      {ly?.source && <div className="ly-src muted xsmall">
+        <span>{ly.source === 'lrclib' ? 'Lyrics from LRCLIB' : 'Lyrics from your library'}{ly.synced ? ' · tap a line to jump' : ''}</span>
+        {ly.saveable && saving !== 'done' && <button type="button" className="btn sm ly-save" onClick={saveToLibrary} disabled={saving === 'busy'} title="Write them as a .lrc file next to the song, so the music server and every app show them">
+          <Icon name="download" size={13} />Save to library</button>}
+        {saving === 'done' && <span className="ok-text"><Icon name="check" size={13} /> Saved to the library</span>}
+      </div>}
     </div>
   )
 }

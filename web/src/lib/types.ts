@@ -61,7 +61,7 @@ export interface DiscAlbum {
 }
 export interface Release extends DiscAlbum { artist: string; artist_id: string; date: string }
 
-export interface Lyrics { source: '' | 'server' | 'lrclib'; synced: boolean; lines: { t: number; text: string }[] }
+export interface Lyrics { source: '' | 'server' | 'lrclib'; synced: boolean; lines: { t: number; text: string }[]; saveable?: boolean }
 
 export interface ImportRun { id: number; source: string; account: string; state: 'running' | 'done' | 'error'; seen: number; imported: number; matched: number; error: string; started_at: string; finished_at: string }
 
@@ -73,7 +73,10 @@ export interface Settings {
   notify_url: string; notify_format: string; notify_arrived: boolean; notify_weekly: boolean; notify_configured: boolean
   lidarr_mode: 'core' | 'direct' | 'off'; lidarr_url: string; lidarr_key: string
   maloja_url: string; maloja_default: string; listenbrainz_user: string; listenbrainz_token: string
-  lyrics_online: boolean; lyrics_available: boolean
+  lyrics_online: boolean; lyrics_available: boolean; lyrics_prefer: 'synced' | 'library'; lyrics_size: 's' | 'm' | 'l'; lyrics_auto: boolean
+  mixes_to_server: boolean
+  lyrics_library: boolean; lyrics_writer: boolean; lyrics_hour: number; lyrics_retry_days: number; lyrics_plain: 'tag' | 'lrc' | 'skip'
+  lyrics_delay_ms: number; lyrics_order: 'added' | 'path'; lyrics_notify: boolean; lyrics_rescan: boolean
   ai_provider: 'auto' | 'pocket' | 'openai'; ai_pocket_model: string; openai_api_key: string; openai_model: string; openai_base_url: string
   setup_complete: boolean; base_url: string; navidrome_url: boolean; navidrome_public_url: string
 }
@@ -83,3 +86,7 @@ export interface Home {
   jump_back?: Album[]; recently_added?: Album[]; on_this_day?: Album[]; rediscover?: Album[]; never_played?: Album[]; top_artists?: Top[]
   mixes?: Mix[]; requests?: Request[]; today?: Totals; streak?: { current: number; longest: number }
 }
+
+export interface LyricsRun { id: number; started_at: string; finished_at: string; state: 'running' | 'done' | 'stopped' | 'error'; trigger: 'schedule' | 'manual' | 'folder'; total: number; checked: number; have: number; fetched: number; plain: number; not_found: number; backoff: number; missing: number; errors: number; note: string }
+export interface LyricsLibrary { writable: boolean; detail: string; music_dir: string; running: boolean; enabled: boolean; attempts: number; synced_total: number; runs: LyricsRun[] }
+export interface SubsonicLogin { enabled: boolean; server_url: string; suggested: string; username?: string; created_at?: string; last_used_at?: string; last_client?: string; password?: string }

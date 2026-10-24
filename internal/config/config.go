@@ -66,6 +66,9 @@ type Config struct {
 
 	// Synced lyrics from LRCLIB when the music server has none ("" = off).
 	LyricsURL string
+	// Where the music library is mounted read-write (the same folder the music
+	// server reads): the lyrics library writes .lrc files next to the songs.
+	MusicDir string
 	// How often each person's library index is checked for a new scan.
 	SyncEvery time.Duration
 
@@ -170,6 +173,7 @@ func Load() (*Config, error) {
 		OpenAIModel:   env("OPENAI_MODEL", ""),
 		OpenAIBaseURL: strings.TrimRight(env("OPENAI_BASE_URL", ""), "/"),
 		LyricsURL:     strings.TrimRight(env("LYRICS_URL", "https://lrclib.net"), "/"),
+		MusicDir:      strings.TrimRight(env("MUSIC_DIR", ""), "/"),
 		SyncEvery:     envDuration("SYNC_EVERY", 10*time.Minute),
 
 		UserAgent: env("USER_AGENT", "PocketMusic/1.0 (+https://github.com/abjelosevic88/pocket-homelab-music)"),

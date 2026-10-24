@@ -61,7 +61,15 @@ and play counts show up there too. More in [docs/design.md](docs/design.md).
   lock-screen and media-key controls, a sleep timer, keyboard shortcuts, ⌘K search.
 - Original files, or transcoded by Navidrome on phones and slow connections (per device); formats a browser can’t
   play — DSD, APE, WavPack — are transcoded by themselves.
-- Synced lyrics that follow the song (tap a line to jump there): from your files first, LRCLIB after.
+- Synced lyrics that follow the song (tap a line to jump there): from your files first, LRCLIB after — size,
+  preference and “open on the lyrics” are yours to set.
+- **Lyrics library**: synced lyrics fetched every night for the whole library and saved as `.lrc` files next to the
+  songs, so every player has them; retry days, plain-lyrics handling, pacing, schedule, notifications — all
+  settings, with a run history and *Run now*. *Save to library* from Now Playing for one song.
+- **Offline**: download an album, playlist or mix onto the phone or laptop (original or 320/256/128 kbps); it plays
+  and seeks without a network, plays made offline are counted when you’re back, and the app itself opens offline.
+- **Phone & car apps**: any Subsonic app (Amperfy, play:Sub, Symfonium…) signs in with a Pocket Music app login,
+  and its plays count in your history and stats. Daily mixes can be published as playlists for those apps.
 - Every open Pocket Music is a device: see “Playing on iPhone”, pause or skip it, or **Play here** to move the queue
   and position over.
 

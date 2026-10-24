@@ -40,6 +40,9 @@ func main() {
 		case "reset-password":
 			runResetPassword(os.Args[2:])
 			return
+		case "import-lyrics-state":
+			runImportLyricsState(os.Args[2:])
+			return
 		case "help", "--help", "-h":
 			fmt.Println(`pocket-music — your music library, played anywhere (on top of Navidrome)
 
@@ -48,6 +51,9 @@ Usage:
   pocket-music backup [-o FILE]    write a consistent SQLite backup
   pocket-music reset-password [-email USER] [-password NEW]
                                    set a user's password (default: first user, random password printed)
+  pocket-music import-lyrics-state STATE.json PREFIX
+                                   carry over fetch-lyrics.py's LRCLIB attempts (PREFIX = the
+                                   music folder its paths start with); run with the server stopped
   pocket-music version             print version
 
 Configuration is read from environment variables, see docs/configuration.md.`)
@@ -211,4 +217,19 @@ func runResetPassword(args []string) {
 	} else {
 		fmt.Printf("Password for %s reset.\n", u.Email)
 	}
+}
+
+func runImportLyricsState(args []string) {
+	if len(args) != 2 {
+		fmt.Fprintln(os.Stderr, "usage: pocket-music import-lyrics-state STATE.json PREFIX")
+		os.Exit(2)
+	}
+	_, log, st := mustLoad()
+	defer st.Close()
+	n, err := server.ImportLyricsState(context.Background(), st, args[0], args[1])
+	if err != nil {
+		log.Error("import-lyrics-state", "err", err)
+		os.Exit(1)
+	}
+	fmt.Printf("%d songs carried over (already asked at LRCLIB; asked again after the retry days)\n", n)
 }

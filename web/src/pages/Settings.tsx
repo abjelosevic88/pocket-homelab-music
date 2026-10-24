@@ -5,9 +5,9 @@ import { api, V1 } from '../lib/api'
 import { useApp } from '../lib/app-context'
 import { deviceName } from '../lib/music'
 import { onLive } from '../lib/live'
-import type { APIToken, Connection, ImportRun, Settings as SettingsT, User } from '../lib/types'
+import type { APIToken, Connection, ImportRun, LyricsLibrary, Settings as SettingsT, SubsonicLogin, User } from '../lib/types'
 import { DATE_FORMATS, TIME_FORMATS, fmtBytes, fmtDateTime, type DateFormat, type TimeFormat } from '../lib/format'
-import { Avatar, Confirm, CoreHint, Field, Loading, Modal, Segmented, SettingRow, Spinner, Switch, Tabs, errMsg, useAsync, useIsMobile, useToast } from '../components/ui'
+import { Avatar, Confirm, CopyField, CoreHint, Field, Loading, Modal, Segmented, SettingRow, Spinner, Switch, Tabs, errMsg, useAsync, useIsMobile, useToast } from '../components/ui'
 import { Icon } from '../components/icons'
 import { Select } from '../components/Select'
 import { ShortcutsSheet } from '../components/ShortcutsSheet'
@@ -15,11 +15,13 @@ import { PocketModelSelect } from '../components/PocketModelSelect'
 import { AIStatusLine, useAIStatus } from '../components/forms'
 import { PlayerBar } from '../components/PlayerBar'
 
-type TabId = 'library' | 'playback' | 'mixes' | 'lidarr' | 'history' | 'notifications' | 'profile' | 'people' | 'tokens' | 'data' | 'about'
+type TabId = 'library' | 'playback' | 'lyrics' | 'apps' | 'mixes' | 'lidarr' | 'history' | 'notifications' | 'profile' | 'people' | 'tokens' | 'data' | 'about'
 
 const TABS: { id: TabId; label: string; icon: string; sub: string }[] = [
   { id: 'library', label: 'Library', icon: 'server', sub: 'Your music server account — Navidrome or any Subsonic server — and the library index.' },
-  { id: 'playback', label: 'Playback', icon: 'headphones', sub: 'Streaming quality, volume levelling, crossfade, scrobbling and lyrics.' },
+  { id: 'playback', label: 'Playback', icon: 'headphones', sub: 'Streaming quality, volume levelling, crossfade and scrobbling.' },
+  { id: 'lyrics', label: 'Lyrics', icon: 'mic', sub: 'How lyrics show while you listen, and the lyrics library that saves them next to your songs.' },
+  { id: 'apps', label: 'Phone & car apps', icon: 'smartphone', sub: 'Sign in to Amperfy, Symfonium, play:Sub and other Subsonic apps with your Pocket Music account.' },
   { id: 'mixes', label: 'Mixes & AI', icon: 'sparkles', sub: 'What goes into daily mixes and radio, and which AI turns a sentence into a mix.' },
   { id: 'lidarr', label: 'Lidarr', icon: 'download', sub: 'Missing albums on artist pages, new releases and album requests.' },
   { id: 'history', label: 'History', icon: 'history', sub: 'Bring in what you listened to before: Maloja or ListenBrainz.' },
@@ -69,6 +71,8 @@ export default function Settings() {
             <div className="set-title"><h2>{current.label}</h2><p>{current.sub}</p></div>
             {tab === 'library' && <Library />}
             {tab === 'playback' && <Playback />}
+            {tab === 'lyrics' && <LyricsSettings />}
+            {tab === 'apps' && <PhoneApps />}
             {tab === 'mixes' && <Mixes />}
             {tab === 'lidarr' && <Lidarr />}
             {tab === 'history' && <HistoryImport />}
@@ -216,13 +220,141 @@ function Playback() {
         <SettingRow title="A play counts after" help="Of the song, or four minutes — like Last.fm. Counted plays build your history, stats and mixes."><span className="row"><input type="number" min={10} max={100} value={f.scrobble_pct} onChange={e => setF({ ...f, scrobble_pct: Number(e.target.value) })} className="set-time" /><span className="muted small">%</span></span></SettingRow>
         <SettingRow title="Tell the music server" help="Navidrome passes plays on to Last.fm, ListenBrainz or Maloja when you set that up there, and shows “now playing”."><Switch checked={f.scrobble} onChange={v => setF({ ...f, scrobble: v })} label="Scrobble to the music server" /></SettingRow>
       </Section>
-      <Section title="Lyrics" icon="mic">
-        <SettingRow title="Look up lyrics online" help={f.lyrics_available ? 'When your files have none, LRCLIB (free, open) is asked by artist, title and length — mostly synced lyrics that follow the song.' : 'Switched off on this server (LYRICS_URL=off).'}><Switch checked={f.lyrics_online && f.lyrics_available} disabled={!f.lyrics_available} onChange={v => setF({ ...f, lyrics_online: v })} label="Look up lyrics online" /></SettingRow>
-      </Section>
       <Section title="This device" icon="devices" sub="How your other devices see this one (“Playing on …”).">
         <SettingRow title="Name"><input value={dev} placeholder={deviceName()} onChange={e => { setDev(e.target.value); if (e.target.value.trim()) localStorage.setItem('pmu-device-name', e.target.value.trim()); else localStorage.removeItem('pmu-device-name') }} /></SettingRow>
       </Section>
       <div className="row"><button type="button" className="btn primary" onClick={() => save()} disabled={busy}>Save changes</button></div>
+    </div>
+  )
+}
+
+// ---------- lyrics ----------
+
+const HOURS = Array.from({ length: 24 }, (_, h) => ({ value: String(h), label: `${String(h).padStart(2, '0')}:00` }))
+const RUN_LABEL: Record<string, string> = { schedule: 'Nightly', manual: 'Run now', folder: 'New album' }
+
+function LyricsSettings() {
+  const { f, setF, save, busy, isAdmin } = useSettingsForm()
+  if (!f) return <Loading />
+  return (
+    <div className="stack loose">
+      <Section title="While you listen" icon="mic" sub="Now Playing shows the lyrics of the song — synced ones follow the music line by line, and a tap on a line jumps there.">
+        <SettingRow title="Look up lyrics online" help={f.lyrics_available ? 'When your files have none, LRCLIB (free, open) is asked by artist, title, album and length — mostly synced lyrics.' : 'Switched off on this server (LYRICS_URL=off).'}><Switch checked={f.lyrics_online && f.lyrics_available} disabled={!f.lyrics_available} onChange={v => setF({ ...f, lyrics_online: v })} label="Look up lyrics online" /></SettingRow>
+        <SettingRow title="When your files have lyrics without timings" help="Synced lyrics follow the song; your files' own text may be more exact (live versions, translations).">
+          <Segmented size="sm" value={f.lyrics_prefer} onChange={v => setF({ ...f, lyrics_prefer: v })} options={[{ value: 'synced', label: 'Prefer synced' }, { value: 'library', label: 'Keep my files’' }]} />
+        </SettingRow>
+        <SettingRow title="Text size"><Segmented size="sm" value={f.lyrics_size} onChange={v => setF({ ...f, lyrics_size: v })} options={[{ value: 's', label: 'Small' }, { value: 'm', label: 'Medium' }, { value: 'l', label: 'Large' }]} /></SettingRow>
+        <SettingRow title="Open on the lyrics" help="On phones Now Playing shows one thing at a time: start on the lyrics when the song has synced ones."><Switch checked={f.lyrics_auto} onChange={v => setF({ ...f, lyrics_auto: v })} label="Open Now Playing on the lyrics" /></SettingRow>
+        <div className="row"><button type="button" className="btn primary" onClick={() => save()} disabled={busy}>Save changes</button></div>
+      </Section>
+      {isAdmin ? <LyricsLibrarySection /> : (
+        <Section title="Lyrics library" icon="database" sub="An admin can have synced lyrics fetched every night and saved next to the songs, so every app shows them." />
+      )}
+    </div>
+  )
+}
+
+function LyricsLibrarySection() {
+  const { f, setF, save, busy } = useSettingsForm()
+  const { toast } = useToast()
+  const [info, setInfo] = useState<LyricsLibrary | null>(null)
+  const load = () => api.get<LyricsLibrary>(`${V1}/lyrics-library`).then(setInfo).catch(e => toast(errMsg(e), 'err'))
+  useEffect(() => { load() }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!info?.running) return
+    const t = setInterval(load, 3000)
+    return () => clearInterval(t)
+  }, [info?.running]) // eslint-disable-line react-hooks/exhaustive-deps
+  if (!f || !info) return <Loading />
+  const run = info.runs[0]
+  const start = async () => { try { setInfo(await api.post<LyricsLibrary>(`${V1}/lyrics-library/run`)); toast('Looking for lyrics') } catch (e) { toast(errMsg(e), 'err') } }
+  const stop = async () => { await api.post(`${V1}/lyrics-library/stop`).catch(() => {}); setTimeout(load, 600) }
+  return (
+    <Section title="Lyrics library" icon="database" actions={<span className={`badge ${!info.writable ? 'warn' : f.lyrics_writer ? 'ok' : ''}`}>{!info.writable ? 'not available' : info.running ? 'running' : f.lyrics_writer ? `nightly at ${String(f.lyrics_hour).padStart(2, '0')}:00` : 'off'}</span>}
+      sub="For the whole box: every song without lyrics is looked up at LRCLIB and synced lyrics are saved as a .lrc file next to it — so Navidrome, phone apps and the car show them too, offline. Songs LRCLIB doesn't know yet are asked again later, never every night.">
+      {!info.writable && <p className="conn-status bad"><span className="dot" />{info.detail}</p>}
+      <SettingRow title="Fetch lyrics every night" help={info.writable ? <>Music folder: <code>{info.music_dir}</code></> : undefined}><Switch checked={f.lyrics_writer} disabled={!info.writable} onChange={v => setF({ ...f, lyrics_writer: v })} label="Fetch lyrics every night" /></SettingRow>
+      <SettingRow title="At"><Select ariaLabel="Hour" value={String(f.lyrics_hour)} onChange={v => setF({ ...f, lyrics_hour: Number(v) })} options={HOURS} /></SettingRow>
+      <SettingRow title="Lyrics without timings" help="Some songs only have plain text. A .lrc without timings shows as a pane that never scrolls in some apps; the FLAC tag is where most players look for plain lyrics.">
+        <Select ariaLabel="Lyrics without timings" value={f.lyrics_plain} onChange={v => setF({ ...f, lyrics_plain: v as SettingsT['lyrics_plain'] })} options={[{ value: 'tag', label: 'Into the FLAC tag', hint: 'UNSYNCEDLYRICS; other formats skipped' }, { value: 'lrc', label: 'As a .lrc file', hint: 'any format' }, { value: 'skip', label: 'Leave them' }]} />
+      </SettingRow>
+      <SettingRow title="Ask again after" help="Songs LRCLIB didn't know: lyrics get added there every day."><span className="row"><input type="number" min={1} max={365} value={f.lyrics_retry_days} onChange={e => setF({ ...f, lyrics_retry_days: Number(e.target.value) })} className="set-time" /><span className="muted small">days</span></span></SettingRow>
+      <SettingRow title="Pause between requests" help="LRCLIB is free: be kind. 500 ms ≈ 7 000 songs an hour."><span className="row"><input type="number" min={0} max={10000} step={100} value={f.lyrics_delay_ms} onChange={e => setF({ ...f, lyrics_delay_ms: Number(e.target.value) })} className="set-time" /><span className="muted small">ms</span></span></SettingRow>
+      <SettingRow title="Order"><Segmented size="sm" value={f.lyrics_order} onChange={v => setF({ ...f, lyrics_order: v })} options={[{ value: 'added', label: 'Newest songs first' }, { value: 'path', label: 'A to Z by folder' }]} /></SettingRow>
+      <SettingRow title="Ask the music server to scan afterwards" help="So new lyrics show up in every app within minutes."><Switch checked={f.lyrics_rescan} onChange={v => setF({ ...f, lyrics_rescan: v })} label="Scan after a run" /></SettingRow>
+      <SettingRow title="Tell me what a run found" help="Through your notifications (Settings → Notifications), only when it found something or failed."><Switch checked={f.lyrics_notify} onChange={v => setF({ ...f, lyrics_notify: v })} label="Notify after a run" /></SettingRow>
+      <div className="row wrap">
+        <button type="button" className="btn primary" onClick={() => save()} disabled={busy}>Save changes</button>
+        {info.running ? <button type="button" className="btn" onClick={stop}><Icon name="x" size={14} />Stop</button>
+          : <button type="button" className="btn" onClick={start} disabled={!info.writable}><Icon name="refresh" size={14} />Run now</button>}
+        <span className="muted small">{info.synced_total.toLocaleString()} songs got synced lyrics here · {info.attempts.toLocaleString()} asked so far</span>
+      </div>
+      {run && run.state === 'running' && <p className="row small"><Spinner />Checked {run.checked.toLocaleString()} of {run.total.toLocaleString()} songs · {run.fetched} found so far</p>}
+      {info.runs.length > 0 && (
+        <table className="table compact mt-s">
+          <thead><tr><th>Run</th><th>When</th><th className="right">Synced</th><th className="right">Plain</th><th className="right">Not found</th><th className="right">Waiting</th><th className="right">Had lyrics</th><th>State</th></tr></thead>
+          <tbody>{info.runs.map(r => (
+            <tr key={r.id} title={r.note}>
+              <td>{RUN_LABEL[r.trigger] || r.trigger}</td><td className="muted">{fmtDateTime(r.started_at)}</td>
+              <td className="right tnum">{r.fetched}</td><td className="right tnum">{r.plain}</td><td className="right tnum">{r.not_found}</td><td className="right tnum">{r.backoff.toLocaleString()}</td><td className="right tnum">{r.have.toLocaleString()}</td>
+              <td className={r.state === 'error' ? 'danger-text' : r.state === 'done' ? '' : 'muted'}>{r.state === 'error' ? r.note || 'error' : r.state}</td>
+            </tr>))}</tbody>
+        </table>
+      )}
+    </Section>
+  )
+}
+
+// ---------- phone & car apps ----------
+
+const APPS: { name: string; where: string }[] = [
+  { name: 'Amperfy', where: 'iPhone, iPad, Mac' }, { name: 'play:Sub', where: 'iPhone, CarPlay' }, { name: 'Substreamer', where: 'iPhone, Android' },
+  { name: 'Symfonium', where: 'Android, Android Auto' }, { name: 'Tempo', where: 'Android' }, { name: 'Ultrasonic', where: 'Android' },
+  { name: 'Feishin', where: 'Mac, Windows, Linux' }, { name: 'Sonixd', where: 'Mac, Windows, Linux' },
+]
+
+function PhoneApps() {
+  const { toast } = useToast()
+  const [info, setInfo] = useState<SubsonicLogin | null>(null)
+  const [name, setName] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [off, setOff] = useState(false)
+  useEffect(() => { api.get<SubsonicLogin>(`${V1}/subsonic`).then(x => { setInfo(x); setName(x.username || x.suggested) }).catch(e => toast(errMsg(e), 'err')) }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  if (!info) return <Loading />
+  const make = async () => {
+    setBusy(true)
+    try { const x = await api.post<SubsonicLogin>(`${V1}/subsonic/password`, { username: name }); setInfo(x); toast(info.enabled ? 'New password made — the old one stopped working' : 'Your app login is ready') } catch (e) { toast(errMsg(e), 'err') } finally { setBusy(false) }
+  }
+  const server = info.server_url || window.location.origin
+  return (
+    <div className="stack loose">
+      <Section title="Your app login" icon="smartphone" actions={<span className={`badge ${info.enabled ? 'ok' : ''}`}>{info.enabled ? 'on' : 'off'}</span>}
+        sub="Pocket Music speaks the Subsonic language, so any Subsonic app can play your library through it — with this login, not your music server password. Plays from those apps count in your history, stats and mixes here, and they see your playlists and loves.">
+        {info.enabled ? <>
+          <Field label="Server"><CopyField value={server} label="Server address" /></Field>
+          <Field label="User name"><CopyField value={info.username || ''} label="User name" /></Field>
+          {info.password
+            ? <div className="set-fresh"><div className="row"><Icon name="check-circle" size={16} /><b>Your app password — copy it now, it is shown once.</b></div><CopyField value={info.password} label="App password" /></div>
+            : <p className="muted small">Password: made {info.created_at ? fmtDateTime(info.created_at) : ''}; it is not shown again. Lost it? Make a new one.</p>}
+          <p className="muted small">{info.last_used_at ? <>Last used {fmtDateTime(info.last_used_at)}{info.last_client ? <> by <b>{info.last_client}</b></> : null}.</> : 'Not used by an app yet.'}</p>
+          <div className="row wrap">
+            <button type="button" className="btn" onClick={make} disabled={busy}><Icon name="refresh" size={14} />New password</button>
+            <button type="button" className="btn ghost danger-text" onClick={() => setOff(true)}>Turn off</button>
+          </div>
+        </> : <>
+          <Field label="User name" help="What you type into the app. Letters, digits, dots, dashes."><input value={name} onChange={e => setName(e.target.value)} autoComplete="off" /></Field>
+          <div className="row"><button type="button" className="btn primary" onClick={make} disabled={busy || !name.trim()}>{busy ? <Spinner /> : <Icon name="key" size={14} />}Make my app password</button></div>
+        </>}
+        {off && <Confirm confirmLabel="Turn off" title="Turn off app sign-in?" message="Apps signed in with this login stop playing until you make a new password." onCancel={() => setOff(false)}
+          onConfirm={async () => { await api.del(`${V1}/subsonic`); setOff(false); setInfo({ ...info, enabled: false, password: undefined }) }} />}
+      </Section>
+      <Section title="Setting up an app" icon="info" sub="Add a server of type Subsonic (or Navidrome) with the address, user name and password above. Leave “legacy authentication” off.">
+        <table className="table compact">
+          <thead><tr><th>App</th><th>Runs on</th></tr></thead>
+          <tbody>{APPS.map(a => <tr key={a.name}><td><b>{a.name}</b></td><td className="muted">{a.where}</td></tr>)}</tbody>
+        </table>
+        <p className="muted small mt-s">The address only answers where this box is reachable (at home or over your VPN). For offline listening use the app's own downloads — or Pocket Music's (album menu → Download).</p>
+      </Section>
     </div>
   )
 }
@@ -242,6 +374,9 @@ function Mixes() {
         <SettingRow title="Keep background genres out" help="They get their own “Focus” mix and come back when you ask for them by name."><Switch checked={f.skip_ambient} onChange={v => setF({ ...f, skip_ambient: v })} label="Keep background genres out of mixes" /></SettingRow>
         <SettingRow title="Background genres" stack><input value={f.ambient_genres} onChange={e => setF({ ...f, ambient_genres: e.target.value })} /></SettingRow>
         <SettingRow title="Never in mixes or radio" help="Comma-separated genres: audiobooks, comedy, children’s songs…" stack><input value={f.hide_genres} onChange={e => setF({ ...f, hide_genres: e.target.value })} placeholder="Audiobook, Comedy, Spoken Word" /></SettingRow>
+      </Section>
+      <Section title="Mixes in other apps" icon="playlist" sub="Phone and car apps only see playlists on the music server. With this on, every morning your mixes are written there as playlists (“Pocket · Daily Mix 1” …) and refreshed in place; Pocket Music itself keeps showing them under Mixes.">
+        <SettingRow title="Publish mixes as playlists" help="Switching it off removes those playlists from the server again."><Switch checked={f.mixes_to_server} onChange={v => save({ mixes_to_server: v })} label="Publish mixes as playlists" /></SettingRow>
       </Section>
       <Section title="Make a mix: AI" icon="wand" sub="The AI sees your genre names and best-known artists — never your files or plays — and answers with a plan (genres, artists, years) that runs over your library here. Without AI the plan is guessed from the words.">
         <AIStatusLine st={ai} />

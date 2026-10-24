@@ -327,3 +327,53 @@ func (s *Store) FailRunningImports(ctx context.Context) {
 	_, _ = s.DB.ExecContext(ctx, `UPDATE imports SET state = 'error', error = 'stopped by a restart; start it again (plays already imported are kept)', finished_at = ? WHERE state = 'running'`, Now())
 	_, _ = s.DB.ExecContext(ctx, `UPDATE library_sync SET state = 'idle' WHERE state = 'syncing'`)
 }
+
+// ---- Subsonic app logins ----
+
+// SubsonicLogin is a person's login for Subsonic apps.
+type SubsonicLogin struct {
+	UserID     int64  `json:"-"`
+	Username   string `json:"username"`
+	Secret     string `json:"-"`
+	CreatedAt  string `json:"created_at"`
+	LastUsedAt string `json:"last_used_at"`
+	LastClient string `json:"last_client"`
+}
+
+const subsonicCols = `user_id, username, secret, created_at, last_used_at, last_client`
+
+func scanSubsonic(row interface{ Scan(...any) error }) (*SubsonicLogin, error) {
+	var l SubsonicLogin
+	if err := row.Scan(&l.UserID, &l.Username, &l.Secret, &l.CreatedAt, &l.LastUsedAt, &l.LastClient); err != nil {
+		return nil, notFound(err)
+	}
+	return &l, nil
+}
+
+// GetSubsonicLogin returns a person's login.
+func (s *Store) GetSubsonicLogin(ctx context.Context, uid int64) (*SubsonicLogin, error) {
+	return scanSubsonic(s.DB.QueryRowContext(ctx, `SELECT `+subsonicCols+` FROM subsonic_logins WHERE user_id = ?`, uid))
+}
+
+// SubsonicLoginByName finds a login by its user name (case-insensitive).
+func (s *Store) SubsonicLoginByName(ctx context.Context, name string) (*SubsonicLogin, error) {
+	return scanSubsonic(s.DB.QueryRowContext(ctx, `SELECT `+subsonicCols+` FROM subsonic_logins WHERE username = ?`, name))
+}
+
+// SaveSubsonicLogin creates or updates a person's login (ErrConflict when the name is taken).
+func (s *Store) SaveSubsonicLogin(ctx context.Context, l *SubsonicLogin) error {
+	_, err := s.DB.ExecContext(ctx, `INSERT INTO subsonic_logins (user_id, username, secret) VALUES (?, ?, ?)
+		ON CONFLICT(user_id) DO UPDATE SET username = excluded.username, secret = excluded.secret`, l.UserID, l.Username, l.Secret)
+	return conflict(err)
+}
+
+// TouchSubsonicLogin records the last use.
+func (s *Store) TouchSubsonicLogin(ctx context.Context, uid int64, client string) {
+	_, _ = s.DB.ExecContext(ctx, `UPDATE subsonic_logins SET last_used_at = ?, last_client = ? WHERE user_id = ?`, Now(), client, uid)
+}
+
+// DeleteSubsonicLogin removes a person's login.
+func (s *Store) DeleteSubsonicLogin(ctx context.Context, uid int64) error {
+	_, err := s.DB.ExecContext(ctx, `DELETE FROM subsonic_logins WHERE user_id = ?`, uid)
+	return err
+}

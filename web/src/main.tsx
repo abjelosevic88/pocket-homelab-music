@@ -21,6 +21,8 @@ import History from './pages/History'
 import Stats, { Recap } from './pages/Stats'
 import { Releases, Requests } from './pages/Discover'
 import Settings from './pages/Settings'
+import Downloads from './pages/Downloads'
+import { registerServiceWorker } from './lib/offline'
 
 function Gate({ children }: { children: React.ReactNode }) {
   const { status, user } = useApp()
@@ -58,11 +60,14 @@ function App() {
         <Route path="/recap" element={<Recap />} />
         <Route path="/releases" element={<Releases />} />
         <Route path="/requests" element={<Requests />} />
+        <Route path="/downloads" element={<Downloads />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>
   )
 }
+
+registerServiceWorker()
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
