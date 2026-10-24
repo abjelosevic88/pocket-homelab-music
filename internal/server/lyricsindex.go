@@ -733,9 +733,11 @@ func (s *Server) handleLyricsIndex(w http.ResponseWriter, r *http.Request) {
 	}
 	if !admin {
 		// members: the songs their own library has
-		where = append(where, `EXISTS (SELECT 1 FROM songs sg WHERE sg.user_id = ? AND (sg.path = f.path
-			OR (lower(sg.artist) = lower(f.artist) AND lower(sg.album) = lower(f.album) AND lower(sg.title) = lower(f.title))))`)
-		args = append(args, u.ID)
+		// (two EXISTS, each on its index: one with OR scans every song for every file)
+		where = append(where, `(EXISTS (SELECT 1 FROM songs sg INDEXED BY songs_path WHERE sg.user_id = ? AND sg.path = f.path)
+			OR EXISTS (SELECT 1 FROM songs sg INDEXED BY songs_match WHERE sg.user_id = ? AND lower(sg.artist) = lower(f.artist)
+				AND lower(sg.album) = lower(f.album) AND lower(sg.title) = lower(f.title)))`)
+		args = append(args, u.ID, u.ID)
 	}
 	cond := func(extra ...string) string {
 		all := append(append([]string{}, where...), extra...)
@@ -811,16 +813,17 @@ func (s *Server) handleLyricsIndex(w http.ResponseWriter, r *http.Request) {
 
 // attachSongs finds the person's song for each file: by its path when the
 // server reports real ones, else by artist, album and title (the same file
-// type and the closest length first, for copies of a song).
+// type and the closest length first, for copies of a song). The indexes are
+// named: left alone, SQLite walks the person's whole library by user_id.
 func (s *Server) attachSongs(ctx context.Context, uid int64, items []lyricsFileOut) {
 	for i := range items {
 		it := &items[i]
-		err := s.store.DB.QueryRowContext(ctx, `SELECT id, album_id FROM songs WHERE user_id = ? AND path = ? LIMIT 1`, uid, it.Path).Scan(&it.SongID, &it.AlbumID)
+		err := s.store.DB.QueryRowContext(ctx, `SELECT id, album_id FROM songs INDEXED BY songs_path WHERE user_id = ? AND path = ? LIMIT 1`, uid, it.Path).Scan(&it.SongID, &it.AlbumID)
 		if err == nil {
 			continue
 		}
 		ext := strings.TrimPrefix(strings.ToLower(filepath.Ext(it.Path)), ".")
-		_ = s.store.DB.QueryRowContext(ctx, `SELECT id, album_id FROM songs
+		_ = s.store.DB.QueryRowContext(ctx, `SELECT id, album_id FROM songs INDEXED BY songs_match
 			WHERE user_id = ? AND lower(artist) = lower(?) AND lower(album) = lower(?) AND lower(title) = lower(?)
 			ORDER BY lower(suffix) = ? DESC, abs(duration - ?) LIMIT 1`, uid, it.Artist, it.Album, it.Title, ext, it.Duration).Scan(&it.SongID, &it.AlbumID)
 	}
@@ -836,7 +839,7 @@ func (s *Server) indexedFileFor(ctx context.Context, so store.Song) (string, boo
 		return "", false
 	}
 	var rel string
-	err := s.store.DB.QueryRowContext(ctx, `SELECT path FROM lyrics_files
+	err := s.store.DB.QueryRowContext(ctx, `SELECT path FROM lyrics_files INDEXED BY lyrics_files_match
 		WHERE lower(artist) = lower(?) AND lower(album) = lower(?) AND lower(title) = lower(?)
 		ORDER BY lower(path) LIKE ? DESC, abs(duration - ?) LIMIT 1`, so.Artist, so.Album, so.Title, "%."+strings.ToLower(so.Suffix), so.Duration).Scan(&rel)
 	if err != nil {
