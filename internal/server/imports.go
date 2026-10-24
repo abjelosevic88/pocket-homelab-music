@@ -227,7 +227,7 @@ func (s *Server) importMaloja(ctx context.Context, u *store.User, id int64, base
 	}
 	// plays the quick match above missed (split artists, other spellings): the full matcher
 	if n, err := s.store.RelinkListens(ctx, u.ID); err == nil {
-		matched += n
+		matched = min(seen, matched+n) // older plays it links count too; never more than were read
 	}
 	s.store.ImportProgress(ctx, id, "done", seen, imported, matched, "")
 	s.hub.send(u.ID, "import", map[string]any{"id": id, "state": "done", "seen": seen, "imported": imported})
@@ -304,7 +304,7 @@ func (s *Server) importListenBrainz(ctx context.Context, u *store.User, id int64
 	}
 	// plays the quick match above missed (split artists, other spellings): the full matcher
 	if n, err := s.store.RelinkListens(ctx, u.ID); err == nil {
-		matched += n
+		matched = min(seen, matched+n) // older plays it links count too; never more than were read
 	}
 	s.store.ImportProgress(ctx, id, "done", seen, imported, matched, "")
 	s.hub.send(u.ID, "import", map[string]any{"id": id, "state": "done", "seen": seen, "imported": imported})
