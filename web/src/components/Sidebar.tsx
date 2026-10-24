@@ -14,6 +14,7 @@ const LIBRARY: NavItem[] = [
   { to: '/artists', label: 'Artists', icon: 'mic' },
   { to: '/songs', label: 'Songs', icon: 'music' },
   { to: '/genres', label: 'Genres', icon: 'tag' },
+  { to: '/lyrics', label: 'Lyrics', icon: 'quote' },
 ]
 const YOURS: NavItem[] = [
   { to: '/mixes', label: 'Mixes', icon: 'sparkles' },

@@ -80,8 +80,19 @@ func (s *Server) lyricsRuns(ctx context.Context, n int) []lyricsRunRow {
 	return out
 }
 
-// lyricsWritable says whether the library can be written, and why not.
+// lyricsWritable says whether the library can be filled from LRCLIB, and why not.
 func (s *Server) lyricsWritable() (bool, string) {
+	if ok, why := s.musicDirWritable(); !ok {
+		return false, why
+	}
+	if s.cfg.LyricsURL == "" {
+		return false, "online lyrics are switched off on this server (LYRICS_URL=off)"
+	}
+	return true, ""
+}
+
+// musicDirWritable says whether lyrics can be saved next to the songs, and why not.
+func (s *Server) musicDirWritable() (bool, string) {
 	if s.cfg.MusicDir == "" {
 		return false, "mount the music folder read-write and set MUSIC_DIR (the folder the music server reads)"
 	}
@@ -95,9 +106,6 @@ func (s *Server) lyricsWritable() (bool, string) {
 	}
 	probe.Close()
 	_ = os.Remove(probe.Name())
-	if s.cfg.LyricsURL == "" {
-		return false, "online lyrics are switched off on this server (LYRICS_URL=off)"
-	}
 	return true, ""
 }
 
@@ -318,8 +326,10 @@ func (s *Server) lyricsOne(ctx context.Context, box store.Settings, file string,
 	default:
 		t.NotFound++
 	}
-	_, _ = s.store.DB.Exec(`INSERT INTO lyrics_attempts (path, tried_at, result) VALUES (?, ?, ?)
-		ON CONFLICT(path) DO UPDATE SET tried_at = excluded.tried_at, result = excluded.result`, s.relToMusicDir(file), store.Now(), result)
+	s.noteLyricsAttempt(ctx, s.relToMusicDir(file), result)
+	if result != "none" {
+		s.lyricsIndexFile(ctx, file)
+	}
 	return nil
 }
 
@@ -338,18 +348,7 @@ func (s *Server) lyricsPass(ctx context.Context, root string, t *lyricsTally, sa
 	} else {
 		sort.SliceStable(todo, func(i, j int) bool { return todo[i].mod.After(todo[j].mod) })
 	}
-	tried := map[string]time.Time{}
-	if rows, err := s.store.DB.QueryContext(ctx, `SELECT path, tried_at FROM lyrics_attempts`); err == nil {
-		for rows.Next() {
-			var p, at string
-			if rows.Scan(&p, &at) == nil {
-				if ts, err := time.Parse(time.RFC3339Nano, at); err == nil {
-					tried[p] = ts
-				}
-			}
-		}
-		rows.Close()
-	}
+	tried := s.lyricsTried(ctx)
 	retry := time.Duration(max(1, box.LyricsRetryDays)) * 24 * time.Hour
 	delay := time.Duration(max(0, box.LyricsDelayMS)) * time.Millisecond
 	t.Checked += have
@@ -363,7 +362,7 @@ func (s *Server) lyricsPass(ctx context.Context, root string, t *lyricsTally, sa
 			save()
 			last = time.Now()
 		}
-		if at, ok := tried[s.relToMusicDir(c.path)]; ok && time.Since(at) < retry {
+		if a, ok := tried[s.relToMusicDir(c.path)]; ok && (a.never() || time.Since(a.at) < retry) {
 			t.Backoff++
 			continue
 		}
@@ -394,10 +393,17 @@ func sleepCtx(ctx context.Context, d time.Duration) {
 
 // startLyricsRun begins a whole-library run in the background unless one is going.
 func (s *Server) startLyricsRun(trigger string) error {
+	return s.startLyricsJob(trigger, func(ctx context.Context, t *lyricsTally, save func()) error {
+		return s.lyricsPass(ctx, s.cfg.MusicDir, t, save)
+	})
+}
+
+// startLyricsJob runs pass in the background as a lyrics run (one at a time).
+func (s *Server) startLyricsJob(trigger string, pass func(ctx context.Context, t *lyricsTally, save func()) error) error {
 	s.lyr.mu.Lock()
 	defer s.lyr.mu.Unlock()
 	if s.lyr.running {
-		return errors.New("a run is already going")
+		return errors.New("a lyrics run is already going")
 	}
 	if ok, why := s.lyricsWritable(); !ok {
 		return errors.New(why)
@@ -416,7 +422,7 @@ func (s *Server) startLyricsRun(trigger string) error {
 			s.lyr.running, s.lyr.cancel = false, nil
 			s.lyr.mu.Unlock()
 		}()
-		s.runLyrics(ctx, id, trigger)
+		s.runLyrics(ctx, id, trigger, pass)
 	}()
 	return nil
 }
@@ -430,11 +436,11 @@ func (s *Server) saveLyricsRun(id int64, t *lyricsTally) {
 		t.State, t.Total, t.Checked, t.Have, t.Fetched, t.Plain, t.NotFound, t.Backoff, t.Missing, t.Errors, t.Note, finished, id)
 }
 
-func (s *Server) runLyrics(ctx context.Context, id int64, trigger string) {
+func (s *Server) runLyrics(ctx context.Context, id int64, trigger string, pass func(ctx context.Context, t *lyricsTally, save func()) error) {
 	t := &lyricsTally{}
 	t.State = "running"
 	s.saveLyricsRun(id, t)
-	err := s.lyricsPass(ctx, s.cfg.MusicDir, t, func() { s.saveLyricsRun(id, t) })
+	err := pass(ctx, t, func() { s.saveLyricsRun(id, t) })
 	switch {
 	case errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded):
 		t.State, t.Note = "stopped", "stopped before the end; the next run carries on"
@@ -446,6 +452,9 @@ func (s *Server) runLyrics(ctx context.Context, id int64, trigger string) {
 	s.saveLyricsRun(id, t)
 	s.log.Info("lyrics library run", "trigger", trigger, "state", t.State, "fetched", t.Fetched, "plain", t.Plain, "not_found", t.NotFound, "backoff", t.Backoff, "have", t.Have, "errors", t.Errors)
 	s.afterLyrics(context.Background(), t, trigger)
+	if trigger != "missing" {
+		s.startLyricsIndex() // what changed in the folder meanwhile, too
+	}
 }
 
 // afterLyrics asks the music server to scan and tells the owner, as set.
@@ -564,6 +573,9 @@ func (s *Server) handleLyricsLibraryRun(w http.ResponseWriter, r *http.Request) 
 			s.saveLyricsRun(id, t)
 		}
 	}
+	if _, _, err := s.lyricsIndex(ctx, dir); err != nil {
+		s.log.Warn("lyrics index", "folder", in.Folder, "err", err)
+	}
 	s.afterLyrics(context.Background(), t, "folder")
 	writeJSON(w, http.StatusOK, t.lyricsRunRow)
 }
@@ -580,21 +592,31 @@ func (s *Server) handleLyricsLibraryStop(w http.ResponseWriter, r *http.Request)
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
+// songFileByPath is a song's file under MUSIC_DIR by the path the server
+// reports (absolute or library-relative), when that is a real one.
+func (s *Server) songFileByPath(so store.Song) (string, bool) {
+	if s.cfg.MusicDir == "" || so.Path == "" {
+		return "", false
+	}
+	parts := strings.Split(strings.TrimLeft(filepath.ToSlash(so.Path), "/"), "/")
+	for i := 0; i < len(parts) && i < 4; i++ {
+		if p, ok := s.inMusicDir(strings.Join(parts[i:], "/")); ok {
+			if fi, err := os.Stat(p); err == nil && fi.Mode().IsRegular() {
+				return p, true
+			}
+		}
+	}
+	return "", false
+}
+
 // songFileFor finds a song's file under MUSIC_DIR: its reported path when the
 // server reports real ones, else by its album folder and title.
 func (s *Server) songFileFor(so store.Song) (string, bool) {
 	if s.cfg.MusicDir == "" {
 		return "", false
 	}
-	if so.Path != "" {
-		parts := strings.Split(strings.TrimLeft(filepath.ToSlash(so.Path), "/"), "/")
-		for i := 0; i < len(parts) && i < 4; i++ { // absolute or library-relative
-			if p, ok := s.inMusicDir(strings.Join(parts[i:], "/")); ok {
-				if fi, err := os.Stat(p); err == nil && fi.Mode().IsRegular() {
-					return p, true
-				}
-			}
-		}
+	if p, ok := s.songFileByPath(so); ok {
+		return p, true
 	}
 	// Artist/<…Album…>/<…Title…>.<suffix> (one folder deeper for discs)
 	title := strings.ToLower(so.Title)
@@ -680,8 +702,8 @@ func (s *Server) handleLyricsSave(w http.ResponseWriter, r *http.Request) {
 	if synced != "" {
 		result = "synced"
 	}
-	_, _ = s.store.DB.ExecContext(ctx, `INSERT INTO lyrics_attempts (path, tried_at, result) VALUES (?, ?, ?)
-		ON CONFLICT(path) DO UPDATE SET tried_at = excluded.tried_at, result = excluded.result`, s.relToMusicDir(file), store.Now(), result)
+	s.noteLyricsAttempt(ctx, s.relToMusicDir(file), result)
+	s.lyricsIndexFile(ctx, file)
 	if box, _ := s.store.GetSettings(ctx, 0); box.LyricsRescan {
 		if mc, err := s.musicFor(ctx, userFrom(ctx)); err == nil {
 			_ = mc.c.StartScan(ctx)

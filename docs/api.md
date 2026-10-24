@@ -47,6 +47,15 @@ that needs the server.
 | `GET /lyrics-library` | Admins: whether the music folder is writable, running, totals and the last 10 runs |
 | `POST /lyrics-library/run` · `{"folder":"Artist/Album"}` | Admins: start a whole-library run (202), or do one folder now and answer with its counts |
 | `POST /lyrics-library/stop` | Admins: stop a running run (the next one carries on) |
+| `GET /lyrics-index?q=&filter=all\|synced\|plain\|missing&sort=\|path\|recent&limit=&offset=` | Every song file in the music folder with its lyrics: `{"items":[{"id","path","artist","title","album","duration","kind":"synced\|plain\|none","source":"lrc\|tag\|","lines","changed_at","attempt","tried_at","snippet","song_id","album_id"}],"total","counts":{"all","synced","plain","missing"},"status"}`. `q` searches the words, titles, artists and albums (accents ignored, last word as a prefix, `"quoted words"` as a phrase); `snippet` marks matches with `\u0002…\u0003`. Members see the songs their own library has |
+| `POST /lyrics-index/refresh` | Admins: read the music folder again (new, changed and removed songs) in the background |
+| `POST /lyrics-index/fetch-missing` · `{"q":"…","again":false}` | Admins: look up every song without lyrics (matching `q`) at LRCLIB in the background, as a lyrics run (`trigger: missing`); `again` also asks for songs LRCLIB didn't know within the retry days. Songs edited by hand or kept without lyrics are never looked up |
+| `GET /lyrics-files/{id}` | One song file: `{"file","text","song","flac","plain_to","can_edit","edit_detail","can_fetch"}` — `text` is the `.lrc` or the tag as it is |
+| `GET /lyrics-files/by-song/{songId}` | `{"id"}` of the file behind one of your songs |
+| `PUT /lyrics-files/{id}` · `{"text":"…"}` | Admins: save lyrics — timed ones as a `.lrc` beside the song, plain ones into the FLAC tag (or an untimed `.lrc`, as the box keeps plain lyrics). The nightly run leaves the song alone afterwards |
+| `DELETE /lyrics-files/{id}?keep=1` | Admins: remove the `.lrc` and the FLAC lyrics tags; `keep=1` keeps the song from being looked up again |
+| `POST /lyrics-files/{id}/fetch` | Admins: look the song up at LRCLIB now and save the best match |
+| `GET /lyrics-files/{id}/candidates?artist=&title=` | Admins: LRCLIB's matches to choose from, synced and the right length first (`{"items":[{"id","artist","title","album","duration","instrumental","synced","text"}],"duration"}`) |
 
 ## Mixes, radio, playlists
 

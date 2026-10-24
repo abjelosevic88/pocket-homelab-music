@@ -22,6 +22,7 @@ import Stats, { Recap } from './pages/Stats'
 import { Releases, Requests } from './pages/Discover'
 import Settings from './pages/Settings'
 import Downloads from './pages/Downloads'
+import { LyricsEditor, LyricsLibrary } from './pages/Lyrics'
 import { registerServiceWorker } from './lib/offline'
 
 function Gate({ children }: { children: React.ReactNode }) {
@@ -50,6 +51,8 @@ function App() {
         <Route path="/loved" element={<Songs loved />} />
         <Route path="/genres" element={<Genres />} />
         <Route path="/genres/:name" element={<GenrePage />} />
+        <Route path="/lyrics" element={<LyricsLibrary />} />
+        <Route path="/lyrics/:id" element={<LyricsEditor />} />
         <Route path="/playlists" element={<Playlists />} />
         <Route path="/playlists/:id" element={<Playlist />} />
         <Route path="/smart/:id" element={<SmartEditor />} />

@@ -108,7 +108,17 @@ func (s *Server) handleLyrics(w http.ResponseWriter, r *http.Request) {
 	}
 	so := songs[0]
 	best := lyricsOut{Lines: []lyricLine{}}
-	if mc, err := s.musicFor(ctx, u); err == nil {
+	// a .lrc beside the file is read as it is now: edits show before the next scan
+	if file, ok := s.songFileByPath(so); ok {
+		if l := existingLrc(file); l != "" {
+			if b, err := readCapped(l, 1<<20); err == nil {
+				if lines, synced := parseLRC(string(b)); len(lines) > 0 {
+					best = lyricsOut{Source: "server", Synced: synced, Lines: lines}
+				}
+			}
+		}
+	}
+	if mc, err := s.musicFor(ctx, u); err == nil && best.Source == "" {
 		if sets, err := mc.c.Lyrics(ctx, id); err == nil {
 			for _, set := range sets {
 				var lines []lyricLine
@@ -145,7 +155,7 @@ func (s *Server) handleLyrics(w http.ResponseWriter, r *http.Request) {
 	}
 	// admins may write online lyrics next to the song for every player
 	best.Saveable = best.Source == "lrclib" && u.Role == "admin" && s.cfg.MusicDir != ""
-	w.Header().Set("Cache-Control", "private, max-age=3600")
+	w.Header().Set("Cache-Control", "private, no-cache") // lyrics can be edited any time
 	writeJSON(w, http.StatusOK, best)
 }
 

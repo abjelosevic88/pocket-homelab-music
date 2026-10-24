@@ -88,6 +88,21 @@ export interface Home {
   mixes?: Mix[]; requests?: Request[]; today?: Totals; streak?: { current: number; longest: number }
 }
 
-export interface LyricsRun { id: number; started_at: string; finished_at: string; state: 'running' | 'done' | 'stopped' | 'error'; trigger: 'schedule' | 'manual' | 'folder'; total: number; checked: number; have: number; fetched: number; plain: number; not_found: number; backoff: number; missing: number; errors: number; note: string }
+export interface LyricsRun { id: number; started_at: string; finished_at: string; state: 'running' | 'done' | 'stopped' | 'error'; trigger: 'schedule' | 'manual' | 'folder' | 'missing'; total: number; checked: number; have: number; fetched: number; plain: number; not_found: number; backoff: number; missing: number; errors: number; note: string }
+export interface LyricsFile {
+  id: number; path: string; artist: string; title: string; album: string; duration: number
+  kind: 'synced' | 'plain' | 'none'; source: 'lrc' | 'tag' | ''; lines: number; changed_at: string
+  attempt: '' | 'synced' | 'plain' | 'none' | 'skip' | 'edited'; tried_at: string; snippet: string; song_id: string; album_id: string
+}
+export interface LyricsIndexStatus {
+  available: boolean; online: boolean
+  index: { running: boolean; done: number; total: number; indexed_at: string }
+  writable?: boolean; detail?: string; can_fetch?: boolean; fetch_detail?: string; plain_to?: 'tag' | 'lrc' | 'skip'
+  nightly?: { enabled: boolean; hour: number; retry_days: number }
+  job?: { running: boolean; run: LyricsRun | null }
+}
+export interface LyricsIndexPage { items: LyricsFile[]; total: number; counts: { all: number; synced: number; plain: number; missing: number }; status: LyricsIndexStatus }
+export interface LyricsFileDetail { file: LyricsFile; text: string; song: Song | null; flac: boolean; plain_to: 'tag' | 'lrc' | 'skip'; can_edit: boolean; edit_detail: string; can_fetch: boolean }
+export interface LrclibMatch { id: number; artist: string; title: string; album: string; duration: number; instrumental: boolean; synced: boolean; text: string }
 export interface LyricsLibrary { writable: boolean; detail: string; music_dir: string; running: boolean; enabled: boolean; attempts: number; synced_total: number; runs: LyricsRun[] }
 export interface SubsonicLogin { enabled: boolean; server_url: string; suggested: string; username?: string; created_at?: string; last_used_at?: string; last_client?: string; password?: string }

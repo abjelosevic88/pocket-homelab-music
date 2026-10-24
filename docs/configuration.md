@@ -65,6 +65,14 @@ nightly hour, how many days before a song LRCLIB didn't know is asked again, wha
 scan request to the music server afterwards and a push with the result. A failing LRCLIB never counts as "not
 found". It reads tags from the files itself, so it works before anyone has connected an account.
 
+The **Lyrics** page (in the sidebar) shows every song in the music folder with the lyrics it has — synced, plain or
+none, from a `.lrc` beside it or its own tags — and searches their words. Admins fetch the missing ones there (one
+song, or every song matching a search, in the background), choose between LRCLIB's matches, edit the text, shift all
+timings, sync plain lyrics by tapping along with the song, and delete wrong ones (optionally keeping the song from
+being looked up again). Saving writes the files, so every app sees the change; Now Playing shows it at once. Songs
+edited by hand are left alone by the nightly run. The page's index reads the folder after every run, once a day and
+on *Re-read folder*; only new and changed files are read again.
+
 | Variable | Default | What it does |
 |---|---|---|
 | `MUSIC_DIR` | – | Where the music folder is mounted in this container (e.g. `/music`, mounted `rw`). Without it the lyrics library is off; "Save to library" in Now Playing needs it too. |

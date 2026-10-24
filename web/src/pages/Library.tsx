@@ -12,7 +12,7 @@ import { useCrumb, shuffleLibrary } from '../components/Layout'
 import { Empty, Loading, Segmented, Spinner, errMsg, useToast } from '../components/ui'
 
 /** Pages through a list as the person scrolls. */
-function usePaged<T>(fetchPage: (offset: number) => Promise<{ items: T[]; total: number }>, key: string) {
+export function usePaged<T>(fetchPage: (offset: number) => Promise<{ items: T[]; total: number }>, key: string) {
   const [items, setItems] = useState<T[] | null>(null)
   const [total, setTotal] = useState(0)
   const [busy, setBusy] = useState(false)

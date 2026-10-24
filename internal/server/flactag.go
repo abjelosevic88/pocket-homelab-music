@@ -158,6 +158,45 @@ func flacHasTag(path, key string) bool {
 // flacAddTag adds key=value unless the key is already there (then it is a
 // no-op and returns false).
 func flacAddTag(path, key, value string) (bool, error) {
+	return flacEditTags(path, func(vc *vorbisComment) bool {
+		if vc.has(key) {
+			return false
+		}
+		vc.comments = append(vc.comments, key+"="+value)
+		return true
+	})
+}
+
+// flacSetTag replaces every key (any case) with key=value; value "" removes
+// it. It returns false when the file already held exactly that.
+func flacSetTag(path, key, value string, alsoRemove ...string) (bool, error) {
+	return flacEditTags(path, func(vc *vorbisComment) bool {
+		before := strings.Join(vc.comments, "\x00")
+		drop := append([]string{key}, alsoRemove...)
+		kept := vc.comments[:0:0]
+		for _, c := range vc.comments {
+			k, _, _ := strings.Cut(c, "=")
+			gone := false
+			for _, d := range drop {
+				if strings.EqualFold(k, d) {
+					gone = true
+				}
+			}
+			if !gone {
+				kept = append(kept, c)
+			}
+		}
+		if value != "" {
+			kept = append(kept, key+"="+value)
+		}
+		vc.comments = kept
+		return strings.Join(kept, "\x00") != before
+	})
+}
+
+// flacEditTags rewrites the file's Vorbis comments with edit (which says
+// whether it changed anything), copying the audio as it is.
+func flacEditTags(path string, edit func(vc *vorbisComment) bool) (bool, error) {
 	src, err := os.Open(path)
 	if err != nil {
 		return false, err
@@ -181,16 +220,18 @@ func flacAddTag(path, key, value string) (bool, error) {
 		if err != nil {
 			return false, err
 		}
-		if vc.has(key) {
+		if !edit(&vc) {
 			return false, nil
 		}
-		vc.comments = append(vc.comments, key+"="+value)
 		blocks[i].data = vc.bytes()
 		found = true
 		break
 	}
 	if !found {
-		vc := vorbisComment{vendor: "Pocket Music", comments: []string{key + "=" + value}}
+		vc := vorbisComment{vendor: "Pocket Music"}
+		if !edit(&vc) {
+			return false, nil
+		}
 		// after STREAMINFO
 		blocks = append(blocks[:1], append([]flacBlock{{typ: 4, data: vc.bytes()}}, blocks[1:]...)...)
 	}
@@ -255,4 +296,66 @@ func flacAddTag(path, key, value string) (bool, error) {
 	}
 	ok = true
 	return true, nil
+}
+
+// flacMeta reads a FLAC's Vorbis comments (keys upper-cased, first value
+// wins) and its length, seeking past pictures and other blocks instead of
+// reading them — cheap over a network share.
+func flacMeta(path string) (map[string]string, int, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer f.Close()
+	head := make([]byte, 4)
+	if _, err := io.ReadFull(f, head); err != nil || string(head) != "fLaC" {
+		return nil, 0, errors.New("not a FLAC file")
+	}
+	tags := map[string]string{}
+	duration := 0
+	for i := 0; i < 512; i++ {
+		h := make([]byte, 4)
+		if _, err := io.ReadFull(f, h); err != nil {
+			return tags, duration, err
+		}
+		typ, last := h[0]&0x7f, h[0]&0x80 != 0
+		n := int64(h[1])<<16 | int64(h[2])<<8 | int64(h[3])
+		switch {
+		case typ == 0 && n >= 18:
+			b := make([]byte, n)
+			if _, err := io.ReadFull(f, b); err != nil {
+				return tags, duration, err
+			}
+			rate := uint64(b[10])<<12 | uint64(b[11])<<4 | uint64(b[12])>>4
+			total := uint64(b[13]&0x0f)<<32 | uint64(binary.BigEndian.Uint32(b[14:18]))
+			if rate > 0 && total > 0 {
+				duration = int((total + rate/2) / rate)
+			}
+		case typ == 4 && n <= 16<<20:
+			b := make([]byte, n)
+			if _, err := io.ReadFull(f, b); err != nil {
+				return tags, duration, err
+			}
+			vc, err := parseVorbisComment(b)
+			if err != nil {
+				return tags, duration, err
+			}
+			for _, c := range vc.comments {
+				if k, v, ok := strings.Cut(c, "="); ok {
+					k = strings.ToUpper(k)
+					if _, seen := tags[k]; !seen && strings.TrimSpace(v) != "" {
+						tags[k] = v
+					}
+				}
+			}
+		default:
+			if _, err := f.Seek(n, io.SeekCurrent); err != nil {
+				return tags, duration, err
+			}
+		}
+		if last {
+			break
+		}
+	}
+	return tags, duration, nil
 }

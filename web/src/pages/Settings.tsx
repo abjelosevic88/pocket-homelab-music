@@ -1,6 +1,6 @@
 import { AskButton } from '../components/AskButton'
 import React, { useEffect, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import { api, V1 } from '../lib/api'
 import { useApp } from '../lib/app-context'
 import { deviceName } from '../lib/music'
@@ -231,7 +231,7 @@ function Playback() {
 // ---------- lyrics ----------
 
 const HOURS = Array.from({ length: 24 }, (_, h) => ({ value: String(h), label: `${String(h).padStart(2, '0')}:00` }))
-const RUN_LABEL: Record<string, string> = { schedule: 'Nightly', manual: 'Run now', folder: 'New album' }
+const RUN_LABEL: Record<string, string> = { schedule: 'Nightly', manual: 'Run now', folder: 'New album', missing: 'Fetch missing' }
 
 function LyricsSettings() {
   const { f, setF, save, busy, isAdmin } = useSettingsForm()
@@ -271,7 +271,7 @@ function LyricsLibrarySection() {
   const stop = async () => { await api.post(`${V1}/lyrics-library/stop`).catch(() => {}); setTimeout(load, 600) }
   return (
     <Section title="Lyrics library" icon="database" actions={<span className={`badge ${!info.writable ? 'warn' : f.lyrics_writer ? 'ok' : ''}`}>{!info.writable ? 'not available' : info.running ? 'running' : f.lyrics_writer ? `nightly at ${String(f.lyrics_hour).padStart(2, '0')}:00` : 'off'}</span>}
-      sub="For the whole box: every song without lyrics is looked up at LRCLIB and synced lyrics are saved as a .lrc file next to it — so Navidrome, phone apps and the car show them too, offline. Songs LRCLIB doesn't know yet are asked again later, never every night.">
+      sub={<>For the whole box: every song without lyrics is looked up at LRCLIB and synced lyrics are saved as a .lrc file next to it — so Navidrome, phone apps and the car show them too, offline. Songs LRCLIB doesn't know yet are asked again later, never every night. Browse, search and edit them all on the <Link to="/lyrics">Lyrics</Link> page.</>}>
       {!info.writable && <p className="conn-status bad"><span className="dot" />{info.detail}</p>}
       <SettingRow title="Fetch lyrics every night" help={info.writable ? <>Music folder: <code>{info.music_dir}</code></> : undefined}><Switch checked={f.lyrics_writer} disabled={!info.writable} onChange={v => setF({ ...f, lyrics_writer: v })} label="Fetch lyrics every night" /></SettingRow>
       <SettingRow title="At"><Select ariaLabel="Hour" value={String(f.lyrics_hour)} onChange={v => setF({ ...f, lyrics_hour: Number(v) })} options={HOURS} /></SettingRow>

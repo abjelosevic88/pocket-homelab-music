@@ -268,18 +268,23 @@ function NowPlaying({ view, onView, onClose }: { view: 'now' | 'lyrics' | 'queue
             <PlayerMenu />
           </div>
         </div>
-        {(view === 'lyrics' || !mobile) && view !== 'queue' && <LyricsPane song={s} onlyLyrics={view === 'lyrics'} />}
+        {(view === 'lyrics' || !mobile) && view !== 'queue' && <LyricsPane song={s} onlyLyrics={view === 'lyrics'} onClose={onClose} />}
         {view === 'queue' && <QueuePane />}
       </div>
     </div>, document.body)
 }
 
-function LyricsPane({ song, onlyLyrics }: { song: Song; onlyLyrics: boolean }) {
+function LyricsPane({ song, onlyLyrics, onClose }: { song: Song; onlyLyrics: boolean; onClose: () => void }) {
   const [ly, setLy] = useState<Lyrics | null>(null)
   const [err, setErr] = useState('')
   const [saving, setSaving] = useState<'' | 'busy' | 'done'>('')
-  const { settings } = useApp()
+  const { settings, user } = useApp()
   const { toast } = useToast()
+  const navigate = useNavigate()
+  const edit = async () => {
+    try { const r = await api.get<{ id: number }>(`${V1}/lyrics-files/by-song/${encodeURIComponent(song.id)}`); onClose(); navigate(`/lyrics/${r.id}`) }
+    catch (e) { toast(errMsg(e), 'err') }
+  }
   const saveToLibrary = async () => {
     setSaving('busy')
     try {
@@ -326,7 +331,9 @@ function LyricsPane({ song, onlyLyrics }: { song: Song; onlyLyrics: boolean }) {
         {ly.saveable && saving !== 'done' && <button type="button" className="btn sm ly-save" onClick={saveToLibrary} disabled={saving === 'busy'} title="Write them as a .lrc file next to the song, so the music server and every app show them">
           <Icon name="download" size={13} />Save to library</button>}
         {saving === 'done' && <span className="ok-text"><Icon name="check" size={13} /> Saved to the library</span>}
+        {user?.role === 'admin' && settings?.lyrics_library && <button type="button" className="btn sm ly-save" onClick={edit} title="Open these lyrics in the editor: fix words, timings, or pick other ones"><Icon name="edit" size={13} />Edit</button>}
       </div>}
+      {ly && !ly.lines.length && user?.role === 'admin' && settings?.lyrics_library && <div className="ly-src muted xsmall"><button type="button" className="btn sm ly-save" onClick={edit}><Icon name="edit" size={13} />Add lyrics</button></div>}
     </div>
   )
 }

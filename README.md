@@ -66,6 +66,9 @@ and play counts show up there too. More in [docs/design.md](docs/design.md).
 - **Lyrics library**: synced lyrics fetched every night for the whole library and saved as `.lrc` files next to the
   songs, so every player has them; retry days, plain-lyrics handling, pacing, schedule, notifications — all
   settings, with a run history and *Run now*. *Save to library* from Now Playing for one song.
+- **Lyrics page**: every song’s lyrics in one place — filter synced / plain / without, search the words, fetch the
+  missing ones (one song or all of a search), pick between LRCLIB’s matches, edit, shift the timings, tap along to
+  sync plain lyrics, delete wrong ones. Saved to the files, so every app has the fix.
 - **Offline**: download an album, playlist or mix onto the phone or laptop (original or 320/256/128 kbps); it plays
   and seeks without a network, plays made offline are counted when you’re back, and the app itself opens offline.
 - **Phone & car apps**: any Subsonic app (Amperfy, play:Sub, Symfonium…) signs in with a Pocket Music app login,
