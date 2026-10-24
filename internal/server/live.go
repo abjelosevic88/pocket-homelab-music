@@ -111,7 +111,7 @@ type deviceView struct {
 	Song   *store.Song `json:"song"`
 	Active bool        `json:"active"` // reported in the last two minutes (an app: still inside the song)
 	Length int         `json:"queue_length"`
-	Kind   string      `json:"kind"`        // web | app (a Subsonic app through /rest: no remote control)
+	Kind   string      `json:"kind"`            // web | app (a Subsonic app through /rest: no remote control)
 	Until  string      `json:"until,omitempty"` // an app's song ends about then, unless it says otherwise
 }
 
