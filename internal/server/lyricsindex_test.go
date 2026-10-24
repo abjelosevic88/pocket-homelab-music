@@ -253,3 +253,12 @@ func TestLyricsIndexPage(t *testing.T) {
 		t.Fatalf("after removal: %v", out["total"])
 	}
 }
+
+func TestLrclibTrouble(t *testing.T) {
+	if m := lrclibTrouble(fmt.Errorf("LRCLIB answered 503 Service Unavailable")); !strings.Contains(m, "overloaded") {
+		t.Fatalf("503: %q", m)
+	}
+	if m := lrclibTrouble(fmt.Errorf("dial tcp: no such host")); !strings.Contains(m, "Couldn't reach LRCLIB") {
+		t.Fatalf("dns: %q", m)
+	}
+}

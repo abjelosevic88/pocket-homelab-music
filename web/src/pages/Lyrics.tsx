@@ -2,7 +2,7 @@
 // (shift timings, tap to sync, LRCLIB's matches to choose from) that writes the files every app reads.
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
-import { api } from '../lib/api'
+import { ApiError, api } from '../lib/api'
 import { V1, albumCover, clock } from '../lib/music'
 import { player, usePlayer, useProgress } from '../lib/player-react'
 import { useApp } from '../lib/app-context'
@@ -134,7 +134,8 @@ export function LyricsLibrary() {
       toast(`${d.file.kind === 'synced' ? 'Synced' : 'Plain'} lyrics saved for “${f.title}”`)
     } catch (e) {
       toast(errMsg(e), 'err')
-      setPatched(m => ({ ...m, [f.id]: { ...f, attempt: 'none', tried_at: new Date().toISOString() } }))
+      // only a real "not found" counts as asked; a busy LRCLIB changes nothing
+      if ((e as ApiError).status === 404) setPatched(m => ({ ...m, [f.id]: { ...f, attempt: 'none', tried_at: new Date().toISOString() } }))
     } finally { setFetching(m => ({ ...m, [f.id]: false })) }
   }
   const refresh = async () => {

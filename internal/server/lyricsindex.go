@@ -530,6 +530,18 @@ func (s *Server) rescanAfterLyrics(ctx context.Context) {
 	}
 }
 
+// lrclibTrouble says what went wrong at LRCLIB in words for a person:
+// mostly it is busy (503, 429, a timeout) and asking later works.
+func lrclibTrouble(err error) string {
+	msg := err.Error()
+	for _, busy := range []string{"503", "502", "504", "429", "deadline exceeded", "timeout"} {
+		if strings.Contains(msg, busy) {
+			return "LRCLIB is overloaded right now and turned the request away — nothing was changed. Try again in a few minutes."
+		}
+	}
+	return "Couldn't reach LRCLIB (" + msg + ") — nothing was changed."
+}
+
 // ---- LRCLIB search: every match, to choose from ----
 
 type lrclibMatch struct {
@@ -543,7 +555,18 @@ type lrclibMatch struct {
 	Text         string  `json:"text"`
 }
 
-func (s *Server) lrclibSearch(ctx context.Context, artist, title string, duration int) ([]lrclibMatch, error) {
+// lrclibSearch asks LRCLIB's search, again after a pause when it is busy.
+func (s *Server) lrclibSearch(ctx context.Context, artist, title string, duration int) (out []lrclibMatch, err error) {
+	for try := 0; try < 3; try++ {
+		if out, err = s.lrclibSearchOnce(ctx, artist, title, duration); err == nil {
+			return out, nil
+		}
+		sleepCtx(ctx, time.Duration(try+1)*1500*time.Millisecond)
+	}
+	return nil, err
+}
+
+func (s *Server) lrclibSearchOnce(ctx context.Context, artist, title string, duration int) ([]lrclibMatch, error) {
 	q := url.Values{"track_name": {title}}
 	if artist != "" {
 		q.Set("artist_name", artist)
@@ -1046,7 +1069,7 @@ func (s *Server) handleLyricsFileFetch(w http.ResponseWriter, r *http.Request) {
 	}
 	synced, plain, err := s.bestLyrics(ctx, t)
 	if err != nil {
-		writeErr(w, http.StatusBadGateway, "LRCLIB: "+err.Error())
+		writeErr(w, http.StatusBadGateway, lrclibTrouble(err))
 		return
 	}
 	text := firstNonEmpty(synced, plain)
@@ -1094,7 +1117,7 @@ func (s *Server) handleLyricsCandidates(w http.ResponseWriter, r *http.Request) 
 	}
 	cands, err := s.lrclibSearch(ctx, artist, title, o.Duration)
 	if err != nil {
-		writeErr(w, http.StatusBadGateway, "LRCLIB: "+err.Error())
+		writeErr(w, http.StatusBadGateway, lrclibTrouble(err))
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"items": cands, "duration": o.Duration})
