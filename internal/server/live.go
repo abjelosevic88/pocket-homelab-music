@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -115,6 +116,16 @@ type deviceView struct {
 	Until  string      `json:"until,omitempty"` // an app's song ends about then, unless it says otherwise
 }
 
+// deviceParam is the {id} of a device route, decoded: a Subsonic app's id has a
+// colon ("subsonic:amperfy"), which the browser escapes and the router keeps escaped.
+func deviceParam(r *http.Request) string {
+	id := chi.URLParam(r, "id")
+	if v, err := url.PathUnescape(id); err == nil {
+		return v
+	}
+	return id
+}
+
 // appDevice: a Subsonic app seen through the gateway. It reports once per song
 // ("now playing"), never its position or a pause.
 func appDevice(id string) bool { return strings.HasPrefix(id, "subsonic:") }
@@ -221,7 +232,7 @@ func (s *Server) handleDevices(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleDeviceQueue(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	uid := actorID(ctx)
-	d, err := s.store.GetDevice(ctx, uid, chi.URLParam(r, "id"))
+	d, err := s.store.GetDevice(ctx, uid, deviceParam(r))
 	if err != nil {
 		s.fail(w, err, "device")
 		return
@@ -254,13 +265,13 @@ func (s *Server) handleDeviceCommand(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "unknown action")
 		return
 	}
-	s.hub.send(uid, "command", map[string]any{"target": chi.URLParam(r, "id"), "action": in.Action, "value": in.Value, "from": in.From})
+	s.hub.send(uid, "command", map[string]any{"target": deviceParam(r), "action": in.Action, "value": in.Value, "from": in.From})
 	w.WriteHeader(http.StatusNoContent)
 }
 
 func (s *Server) handleDeleteDevice(w http.ResponseWriter, r *http.Request) {
 	uid := actorID(r.Context())
-	if err := s.store.DeleteDevice(r.Context(), uid, chi.URLParam(r, "id")); err != nil {
+	if err := s.store.DeleteDevice(r.Context(), uid, deviceParam(r)); err != nil {
 		s.fail(w, err, "delete device")
 		return
 	}
