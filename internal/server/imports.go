@@ -193,10 +193,9 @@ func (s *Server) importMaloja(ctx context.Context, u *store.User, id int64, base
 		var batch []store.Listen
 		for _, x := range res.List {
 			seen++
-			artist := strings.Join(x.Track.Artists, ", ")
-			if len(x.Track.Artists) > 0 {
-				artist = x.Track.Artists[0]
-			}
+			// every name Maloja split the credit into ("AC/DC" comes back as AC, DC);
+			// matching to the library puts them back together
+			artist := strings.Join(x.Track.Artists, " & ")
 			album := ""
 			if x.Track.Album != nil {
 				album = x.Track.Album.Title

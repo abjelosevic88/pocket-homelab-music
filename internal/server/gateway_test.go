@@ -16,6 +16,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/abjelosevic88/pocket-homelab-music/internal/store"
 )
 
 func gatewayCall(t *testing.T, h http.Handler, method string, q url.Values) (*httptest.ResponseRecorder, map[string]any) {
@@ -288,4 +290,52 @@ func TestImportLyricsState(t *testing.T) {
 		t.Fatalf("path = %q", path)
 	}
 	_ = io.Discard
+}
+
+func TestSamePlayDifferentSpellingCountsOnce(t *testing.T) {
+	s, _, _, _ := testServer(t)
+	ctx := context.Background()
+	u, _ := s.store.GetUserByEmail(ctx, "ana@example.com")
+	at := "2026-10-21T08:10:10Z"
+	n, err := s.store.AddListens(ctx, u.ID, []store.Listen{{Title: "Weeping Dawn (City Version)", Artist: "Borislav Slavov", PlayedAt: at, Source: "maloja"}})
+	if err != nil || n != 1 {
+		t.Fatalf("first: %d %v", n, err)
+	}
+	n, _ = s.store.AddListens(ctx, u.ID, []store.Listen{{Title: "Weeping Dawn", Artist: "Borislav Slavov ", PlayedAt: "2026-10-21T08:10:10.000Z", Source: "maloja"}, {Title: "Next", Artist: "X", PlayedAt: "2026-10-21T08:13:10Z", Source: "maloja"}})
+	if n != 1 {
+		t.Fatalf("re-import added %d, want 1 (only the new play)", n)
+	}
+	// another person at the same second is their own play
+	b, _ := s.store.GetUserByEmail(ctx, "ben@example.com")
+	if n, _ := s.store.AddListens(ctx, b.ID, []store.Listen{{Title: "Weeping Dawn", Artist: "Borislav Slavov", PlayedAt: at}}); n != 1 {
+		t.Fatalf("ben's play at the same second = %d", n)
+	}
+}
+
+func TestRelinkSplitArtists(t *testing.T) {
+	s, _, _, _ := testServer(t)
+	ctx := context.Background()
+	u, _ := s.store.GetUserByEmail(ctx, "ana@example.com")
+	for _, x := range [][3]string{{"t1", "AC/DC", "Demon Fire"}, {"t2", "Soundscapes & Ambience", "Silver Dragon Inn"}, {"t3", "Other Band", "Silver Dragon Inn"}} {
+		if _, err := s.store.DB.Exec(`INSERT INTO songs (user_id, id, title, artist) VALUES (?, ?, ?, ?)`, u.ID, x[0], x[2], x[1]); err != nil {
+			t.Fatal(err)
+		}
+	}
+	_, _ = s.store.AddListens(ctx, u.ID, []store.Listen{
+		{Title: "Demon Fire", Artist: "AC", PlayedAt: "2026-10-01T10:00:00Z"},
+		{Title: "Silver Dragon Inn", Artist: "Ambience & Soundscapes", PlayedAt: "2026-10-01T11:00:00Z"},
+		{Title: "Silver Dragon Inn", Artist: "Nobody", PlayedAt: "2026-10-01T12:00:00Z"},
+	})
+	n, err := s.store.RelinkListens(ctx, u.ID)
+	if err != nil || n != 2 {
+		t.Fatalf("relinked %d %v, want 2", n, err)
+	}
+	ls, _ := s.store.Listens(ctx, u.ID, "2026-10-01T00:00:00Z", "2026-10-02T00:00:00Z", -1, "")
+	got := map[string]string{}
+	for _, l := range ls {
+		got[l.PlayedAt[11:13]] = l.SongID + "|" + l.Artist
+	}
+	if got["10"] != "t1|AC/DC" || got["11"] != "t2|Soundscapes & Ambience" || got["12"] != "|Nobody" {
+		t.Fatalf("relinked = %v", got)
+	}
 }

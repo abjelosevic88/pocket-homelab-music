@@ -353,7 +353,7 @@ func (s *Server) handleExportJSON(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	uid := actorID(ctx)
 	doc := exportDoc{App: "pocket-music", Version: Version, Exported: store.Now()}
-	doc.Listens, _ = s.store.Listens(ctx, uid, "", "", 1000000, "")
+	doc.Listens, _ = s.store.Listens(ctx, uid, "", "", -1, "") // all of them
 	doc.Smart, _ = s.store.ListSmart(ctx, uid)
 	w.Header().Set("Content-Disposition", `attachment; filename="pocket-music-export.json"`)
 	writeJSON(w, http.StatusOK, doc)

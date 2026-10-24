@@ -30,8 +30,18 @@ func addListen(ctx context.Context, db execer, uid int64, l *Listen) (bool, erro
 	if l.Source == "" {
 		l.Source = "web"
 	}
+	// One person doesn't start two plays in the same second: a play at a second
+	// that already has one is the same play, however its title or artist was
+	// spelled then (an import before and after the library index, "Artist " vs
+	// "Artist", a retried request).
+	sec := l.PlayedAt
+	if len(sec) > 19 {
+		sec = sec[:19]
+	}
 	res, err := db.ExecContext(ctx, `INSERT OR IGNORE INTO listens (user_id, song_id, title, artist, album, album_id, artist_id, genre, duration, played_at, ms_played, source, device)
-		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`, uid, l.SongID, l.Title, l.Artist, l.Album, l.AlbumID, l.ArtistID, l.Genre, l.Duration, l.PlayedAt, l.MSPlayed, l.Source, l.Device)
+		SELECT ?,?,?,?,?,?,?,?,?,?,?,?,?
+		WHERE NOT EXISTS (SELECT 1 FROM listens WHERE user_id = ? AND played_at >= ? AND played_at < ? || '~')`,
+		uid, l.SongID, l.Title, l.Artist, l.Album, l.AlbumID, l.ArtistID, l.Genre, l.Duration, l.PlayedAt, l.MSPlayed, l.Source, l.Device, uid, sec, sec)
 	if err != nil {
 		return false, err
 	}
@@ -89,7 +99,8 @@ func (s *Store) Listens(ctx context.Context, uid int64, from, to string, limit i
 		like := "%" + q + "%"
 		args = append(args, like, like, like)
 	}
-	if limit <= 0 || limit > 1000 {
+	// limit < 0 = every play (exports); otherwise at most 1000
+	if limit == 0 || limit > 1000 {
 		limit = 200
 	}
 	rows, err := s.DB.QueryContext(ctx, `SELECT `+listenCols+` FROM listens WHERE `+strings.Join(where, " AND ")+fmt.Sprintf(` ORDER BY played_at DESC LIMIT %d`, limit), args...)
@@ -355,10 +366,12 @@ func (s *Store) RelinkListens(ctx context.Context, uid int64) (int, error) {
 		return 0, err
 	}
 	type hit struct {
-		id, album, albumID, artistID, genre string
-		dur                                 int
+		id, artist, album, albumID, artistID, genre string
+		dur                                         int
+		parts                                       map[string]bool
 	}
 	idx := map[key]hit{}
+	byTitle := map[string][]hit{}
 	for rows.Next() {
 		var h hit
 		var a, t string
@@ -366,10 +379,12 @@ func (s *Store) RelinkListens(ctx context.Context, uid int64) (int, error) {
 			rows.Close()
 			return 0, err
 		}
+		h.artist, h.parts = a, artistParts(a)
 		k := key{MatchKey(a), MatchKey(t)}
 		if _, ok := idx[k]; !ok {
 			idx[k] = h
 		}
+		byTitle[k.t] = append(byTitle[k.t], h)
 	}
 	rows.Close()
 	lrows, err := s.DB.QueryContext(ctx, `SELECT id, artist, title FROM listens WHERE user_id = ? AND song_id = ''`, uid)
@@ -387,6 +402,24 @@ func (s *Store) RelinkListens(ctx context.Context, uid int64) (int, error) {
 		if lrows.Scan(&id, &a, &t) == nil {
 			if h, ok := idx[key{MatchKey(a), MatchKey(t)}]; ok {
 				ups = append(ups, upd{id, h})
+				continue
+			}
+			// scrobblers split "AC/DC" into AC + DC and "Soundscapes & Ambience" into
+			// Ambience, Soundscapes: the same title by an artist made of those parts
+			// is the song, when only one song fits
+			mine := artistParts(a)
+			var found *hit
+			n := 0
+			for i, h := range byTitle[MatchKey(t)] {
+				if len(mine) > 0 && subset(mine, h.parts) {
+					if found == nil || found.id != h.id {
+						n++
+					}
+					found = &byTitle[MatchKey(t)][i]
+				}
+			}
+			if n == 1 {
+				ups = append(ups, upd{id, *found})
 			}
 		}
 	}
@@ -399,14 +432,37 @@ func (s *Store) RelinkListens(ctx context.Context, uid int64) (int, error) {
 		return 0, err
 	}
 	for _, u := range ups {
-		if _, err := tx.ExecContext(ctx, `UPDATE listens SET song_id = ?, album_id = ?, artist_id = ?, genre = CASE WHEN genre = '' THEN ? ELSE genre END,
+		// the library's spelling of the artist from now on ("AC/DC", not "AC")
+		if _, err := tx.ExecContext(ctx, `UPDATE listens SET song_id = ?, artist = ?, album_id = ?, artist_id = ?, genre = CASE WHEN genre = '' THEN ? ELSE genre END,
 			album = CASE WHEN album = '' THEN ? ELSE album END, duration = CASE WHEN duration = 0 THEN ? ELSE duration END WHERE id = ?`,
-			u.h.id, u.h.albumID, u.h.artistID, u.h.genre, u.h.album, u.h.dur, u.id); err != nil {
+			u.h.id, u.h.artist, u.h.albumID, u.h.artistID, u.h.genre, u.h.album, u.h.dur, u.id); err != nil {
 			// a duplicate of a live play: keep the live one
 			_, _ = tx.ExecContext(ctx, `DELETE FROM listens WHERE id = ?`, u.id)
 		}
 	}
 	return len(ups), tx.Commit()
+}
+
+// artistParts splits an artist credit into its names ("AC/DC" → ac, dc;
+// "Soundscapes & Ambience" → soundscapes, ambience), as scrobblers do.
+func artistParts(s string) map[string]bool {
+	out := map[string]bool{}
+	f := func(r rune) bool { return r == '/' || r == '&' || r == ',' || r == ';' || r == '+' }
+	for _, p := range strings.FieldsFunc(strings.ReplaceAll(strings.ReplaceAll(Fold(s), " and ", "&"), " x ", "&"), f) {
+		if k := MatchKey(p); k != "" {
+			out[k] = true
+		}
+	}
+	return out
+}
+
+func subset(a, b map[string]bool) bool {
+	for k := range a {
+		if !b[k] {
+			return false
+		}
+	}
+	return true
 }
 
 // MatchKey folds a title or artist for matching across sources: case,
