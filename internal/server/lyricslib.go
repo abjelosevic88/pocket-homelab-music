@@ -300,14 +300,20 @@ func (s *Server) lyricsOne(ctx context.Context, box store.Settings, file string,
 			}
 			t.Plain++
 		case "tag":
-			if strings.EqualFold(filepath.Ext(file), ".flac") {
-				if added, err := flacAddTag(file, "UNSYNCEDLYRICS", plain); err != nil {
-					t.Errors++
-					t.Note = filepath.Base(file) + ": " + err.Error()
-				} else if added {
-					t.Plain++
-				}
+			if !strings.EqualFold(filepath.Ext(file), ".flac") {
+				t.NotFound++ // no synced lyrics, and nowhere to put plain ones
+				break
 			}
+			if added, err := flacAddTag(file, "UNSYNCEDLYRICS", plain); err != nil {
+				t.Errors++
+				t.Note = filepath.Base(file) + ": " + err.Error()
+			} else if added {
+				t.Plain++
+			} else {
+				t.Have++ // its tag already holds them; synced ones are asked for again later
+			}
+		default:
+			t.NotFound++ // only plain lyrics, and those are left alone
 		}
 	default:
 		t.NotFound++

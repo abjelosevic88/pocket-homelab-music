@@ -1,7 +1,7 @@
 /* Shared controls from the Pocket Calendar design: searchable select, connection blocks, settings rows, phone fixes. */
 .grid { display: grid; }
 .pad { padding: 18px; }
-.mt-sm { margin-top: 8px; } .mb-sm { margin-bottom: 8px; } .block { display: block; }
+.mt-sm { margin-top: 8px; } .mb-sm { margin-bottom: 8px; } .block:not(.btn) { display: block; }
 .ok { color: var(--green-ink); } .bad { color: var(--red-ink); } .warn-text { color: var(--warning); }
 .two-col { align-items: start; gap: 16px; }
 .two-col.cols-2-3 { grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); }
