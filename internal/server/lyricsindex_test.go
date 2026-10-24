@@ -97,9 +97,10 @@ func TestLyricsIndexPage(t *testing.T) {
 	if _, err := flacAddTag(neon, "UNSYNCEDLYRICS", "rain on the window"); err != nil {
 		t.Fatal(err)
 	}
-	// ana's songs live at those paths; ben's song is nowhere in the folder
+	// ana's s1 is reported at its real path, s2 at a made-up one (as Navidrome does: matched by
+	// artist, album and title); ben's song is nowhere in the folder
 	_, _ = s.store.DB.Exec(`UPDATE songs SET path = 'Ana Band/1986 - Night Drive/01. Blue Hour.flac' WHERE id = 's1'`)
-	_, _ = s.store.DB.Exec(`UPDATE songs SET path = 'Ana Band/1986 - Night Drive/02. Neon Rain.flac' WHERE id = 's2'`)
+	_, _ = s.store.DB.Exec(`UPDATE songs SET path = 'Ana Band/Night Drive/02 - Neon Rain.flac', suffix = 'flac' WHERE id = 's2'`)
 
 	if read, _, err := s.lyricsIndex(ctx, music); err != nil || read != 3 {
 		t.Fatalf("index: %d %v", read, err)
@@ -136,7 +137,7 @@ func TestLyricsIndexPage(t *testing.T) {
 	if b := byTitle["Blue Hour"]; b["kind"] != "synced" || b["source"] != "lrc" || b["song_id"] != "s1" || b["lines"].(float64) != 2 {
 		t.Fatalf("blue: %v", b)
 	}
-	if n := byTitle["Neon Rain"]; n["kind"] != "plain" || n["source"] != "tag" {
+	if n := byTitle["Neon Rain"]; n["kind"] != "plain" || n["source"] != "tag" || n["song_id"] != "s2" {
 		t.Fatalf("neon: %v", n)
 	}
 	// words, without diacritics, last word as a prefix
@@ -170,6 +171,9 @@ func TestLyricsIndexPage(t *testing.T) {
 	if code, out := call(t, h, tok["ana"], "GET", "/api/v1/lyrics-files/by-song/s1", nil); code != 200 || fmt.Sprint(out["id"]) != blueID {
 		t.Fatalf("by song: %d %v", code, out)
 	}
+	if code, out := call(t, h, tok["ana"], "GET", "/api/v1/lyrics-files/by-song/s2", nil); code != 200 || fmt.Sprint(out["id"]) != fmt.Sprint(byTitle["Neon Rain"]["id"]) {
+		t.Fatalf("by song (made-up path): %d %v", code, out)
+	}
 	code, d := call(t, h, tok["ana"], "GET", "/api/v1/lyrics-files/"+blueID, nil)
 	if code != 200 || !strings.Contains(d["text"].(string), "[00:01.00] blue skies") || d["can_edit"] != true || d["song"].(map[string]any)["id"] != "s1" {
 		t.Fatalf("detail: %d %v", code, d)
@@ -194,6 +198,11 @@ func TestLyricsIndexPage(t *testing.T) {
 	}
 	if m, _, _ := flacMeta(neon); m["UNSYNCEDLYRICS"] != "rain, edited" {
 		t.Fatalf("tag = %v", m)
+	}
+	// a song at a made-up path still gets its .lrc read straight from the folder
+	_, _ = call(t, h, tok["ana"], "PUT", "/api/v1/lyrics-files/"+neonID, map[string]any{"text": "[00:02.00] rain, timed"})
+	if _, ly := call(t, h, tok["ana"], "GET", "/api/v1/lyrics/s2", nil); ly["synced"] != true || ly["lines"].([]any)[0].(map[string]any)["text"] != "rain, timed" {
+		t.Fatalf("now playing s2: %v", ly)
 	}
 
 	// LRCLIB's matches, synced and the right length first

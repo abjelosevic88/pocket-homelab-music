@@ -109,7 +109,7 @@ func (s *Server) handleLyrics(w http.ResponseWriter, r *http.Request) {
 	so := songs[0]
 	best := lyricsOut{Lines: []lyricLine{}}
 	// a .lrc beside the file is read as it is now: edits show before the next scan
-	if file, ok := s.songFileByPath(so); ok {
+	if file, ok := s.indexedFileFor(ctx, so); ok {
 		if l := existingLrc(file); l != "" {
 			if b, err := readCapped(l, 1<<20); err == nil {
 				if lines, synced := parseLRC(string(b)); len(lines) > 0 {

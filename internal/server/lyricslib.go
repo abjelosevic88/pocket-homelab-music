@@ -675,7 +675,10 @@ func (s *Server) handleLyricsSave(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	so := songs[0]
-	file, ok := s.songFileFor(so)
+	file, ok := s.indexedFileFor(ctx, so)
+	if !ok {
+		file, ok = s.songFileFor(so)
+	}
 	if !ok {
 		writeErr(w, http.StatusNotFound, "can't find this song's file in the music folder")
 		return

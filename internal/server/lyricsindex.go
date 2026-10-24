@@ -733,7 +733,8 @@ func (s *Server) handleLyricsIndex(w http.ResponseWriter, r *http.Request) {
 	}
 	if !admin {
 		// members: the songs their own library has
-		where = append(where, "EXISTS (SELECT 1 FROM songs sg WHERE sg.user_id = ? AND sg.path = f.path)")
+		where = append(where, `EXISTS (SELECT 1 FROM songs sg WHERE sg.user_id = ? AND (sg.path = f.path
+			OR (lower(sg.artist) = lower(f.artist) AND lower(sg.album) = lower(f.album) AND lower(sg.title) = lower(f.title))))`)
 		args = append(args, u.ID)
 	}
 	cond := func(extra ...string) string {
@@ -808,36 +809,41 @@ func (s *Server) handleLyricsIndex(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"items": items, "total": total, "counts": counts, "status": s.lyricsIndexStatus(ctx, admin)})
 }
 
-// attachSongs finds the person's song for each file, by its path.
+// attachSongs finds the person's song for each file: by its path when the
+// server reports real ones, else by artist, album and title (the same file
+// type and the closest length first, for copies of a song).
 func (s *Server) attachSongs(ctx context.Context, uid int64, items []lyricsFileOut) {
-	if len(items) == 0 {
-		return
-	}
-	ph := make([]string, len(items))
-	args := []any{uid}
-	for i, it := range items {
-		ph[i] = "?"
-		args = append(args, it.Path)
-	}
-	rows, err := s.store.DB.QueryContext(ctx, `SELECT path, id, album_id FROM songs WHERE user_id = ? AND path IN (`+strings.Join(ph, ",")+`)`, args...)
-	if err != nil {
-		return
-	}
-	type ids struct{ song, album string }
-	by := map[string]ids{}
-	for rows.Next() {
-		var p string
-		var x ids
-		if rows.Scan(&p, &x.song, &x.album) == nil {
-			by[p] = x
-		}
-	}
-	rows.Close()
 	for i := range items {
-		if x, ok := by[items[i].Path]; ok {
-			items[i].SongID, items[i].AlbumID = x.song, x.album
+		it := &items[i]
+		err := s.store.DB.QueryRowContext(ctx, `SELECT id, album_id FROM songs WHERE user_id = ? AND path = ? LIMIT 1`, uid, it.Path).Scan(&it.SongID, &it.AlbumID)
+		if err == nil {
+			continue
 		}
+		ext := strings.TrimPrefix(strings.ToLower(filepath.Ext(it.Path)), ".")
+		_ = s.store.DB.QueryRowContext(ctx, `SELECT id, album_id FROM songs
+			WHERE user_id = ? AND lower(artist) = lower(?) AND lower(album) = lower(?) AND lower(title) = lower(?)
+			ORDER BY lower(suffix) = ? DESC, abs(duration - ?) LIMIT 1`, uid, it.Artist, it.Album, it.Title, ext, it.Duration).Scan(&it.SongID, &it.AlbumID)
 	}
+}
+
+// indexedFileFor finds a song's file through the lyrics index: by the path
+// the server reports, else by artist, album and title.
+func (s *Server) indexedFileFor(ctx context.Context, so store.Song) (string, bool) {
+	if p, ok := s.songFileByPath(so); ok {
+		return p, true
+	}
+	if s.cfg.MusicDir == "" {
+		return "", false
+	}
+	var rel string
+	err := s.store.DB.QueryRowContext(ctx, `SELECT path FROM lyrics_files
+		WHERE lower(artist) = lower(?) AND lower(album) = lower(?) AND lower(title) = lower(?)
+		ORDER BY lower(path) LIKE ? DESC, abs(duration - ?) LIMIT 1`, so.Artist, so.Album, so.Title, "%."+strings.ToLower(so.Suffix), so.Duration).Scan(&rel)
+	if err != nil {
+		return "", false
+	}
+	p, ok := s.inMusicDir(rel)
+	return p, ok
 }
 
 // lyricsFileFor loads one index row the person may see, and its file.
@@ -856,24 +862,6 @@ func (s *Server) lyricsFileFor(ctx context.Context, u *store.User, idStr string)
 	o = items[0]
 	if u.Role != "admin" && o.SongID == "" {
 		return o, "", store.ErrNotFound
-	}
-	if o.SongID == "" {
-		// servers that report made-up paths: the same title by the same artist, if there's just one
-		rows, err := s.store.DB.QueryContext(ctx, `SELECT id, album_id FROM songs WHERE user_id = ? AND title = ? COLLATE NOCASE
-			AND (artist = ? COLLATE NOCASE OR album_artist = ? COLLATE NOCASE) LIMIT 2`, u.ID, o.Title, o.Artist, o.Artist)
-		if err == nil {
-			var found [][2]string
-			for rows.Next() {
-				var a, b string
-				if rows.Scan(&a, &b) == nil {
-					found = append(found, [2]string{a, b})
-				}
-			}
-			rows.Close()
-			if len(found) == 1 {
-				o.SongID, o.AlbumID = found[0][0], found[0][1]
-			}
-		}
 	}
 	file, ok := s.inMusicDir(o.Path)
 	if !ok {
@@ -928,7 +916,10 @@ func (s *Server) handleLyricsFileBySong(w http.ResponseWriter, r *http.Request) 
 		writeErr(w, http.StatusNotFound, "not found")
 		return
 	}
-	file, ok := s.songFileFor(songs[0])
+	file, ok := s.indexedFileFor(ctx, songs[0])
+	if !ok {
+		file, ok = s.songFileFor(songs[0])
+	}
 	if !ok {
 		writeErr(w, http.StatusNotFound, "can't find this song's file in the music folder")
 		return
