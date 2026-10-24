@@ -12,10 +12,10 @@ jobs:
   image:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: docker/setup-qemu-action@v3
-      - uses: docker/setup-buildx-action@v3
-      - uses: docker/login-action@v3
+      - uses: actions/checkout@v7
+      - uses: docker/setup-qemu-action@v4
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -23,7 +23,7 @@ jobs:
       - id: ver
         run: echo "v=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
       - id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ${{ env.IMAGE }}
           tags: |
@@ -32,7 +32,7 @@ jobs:
             type=raw,value=latest,enable={{is_default_branch}}
             type=raw,value=edge,enable={{is_default_branch}}
             type=sha
-      - uses: docker/build-push-action@v6
+      - uses: docker/build-push-action@v7
         with:
           context: .
           platforms: linux/amd64,linux/arm64,linux/arm/v7
@@ -56,10 +56,10 @@ jobs:
           - { goos: windows, goarch: amd64 }
           - { goos: freebsd, goarch: amd64 }
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with: { node-version: 22 }
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with: { go-version-file: go.mod }
       - run: cd web && npm ci --no-audit --no-fund && npm run build
       - name: Build
@@ -70,7 +70,7 @@ jobs:
           go build -trimpath -ldflags "-s -w -X main.version=${GITHUB_REF_NAME#v}" -o "dist/$name/pocket-music$ext" ./cmd/pocket-music
           cp README.md LICENSE "dist/$name/"
           cd dist && if [ "$GOOS" = windows ]; then zip -r "$name.zip" "$name"; else tar czf "$name.tar.gz" "$name"; fi
-      - uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@v3
         with:
           files: |
             dist/*.tar.gz
