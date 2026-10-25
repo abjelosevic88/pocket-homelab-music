@@ -236,11 +236,13 @@ func (s *Server) handleGateway(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if gatewayChanges[method] && res.StatusCode == http.StatusOK {
-		body, err := io.ReadAll(io.LimitReader(res.Body, 1<<20))
+		// "status ok" sits at the top of the reply: check the head, pass all of it on
+		head, err := io.ReadAll(io.LimitReader(res.Body, 64<<10))
 		w.Header().Del("Content-Length")
 		w.WriteHeader(res.StatusCode)
-		_, _ = w.Write(body)
-		if err == nil && gatewayOK.Match(body) {
+		_, _ = w.Write(head)
+		_, cerr := io.Copy(w, res.Body)
+		if err == nil && cerr == nil && gatewayOK.Match(head) {
 			s.gatewayChanged(ctx, u, method, q)
 		}
 		return
