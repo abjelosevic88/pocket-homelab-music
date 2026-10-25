@@ -487,6 +487,7 @@ func (s *Server) handleRequestAlbum(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, err, "save request")
 		return
 	}
+	s.liveRequests(u.ID, "added", rq.ID)
 	s.publish(ctx, u, "music.album_requested", rq.Artist+" — "+rq.Album, map[string]any{"artist": rq.Artist, "album": rq.Album, "year": rq.Year})
 	writeJSON(w, http.StatusOK, rq)
 }
@@ -574,6 +575,7 @@ func (s *Server) handleDeleteRequest(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, err, "delete request")
 		return
 	}
+	s.liveRequests(actorID(r.Context()), "deleted", idParam(r, "id"))
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -658,11 +660,20 @@ func (s *Server) followRequests(ctx context.Context) {
 		queue := s.lidarrQueue(ctx, l)
 		reqs, _ := s.store.Requests(ctx, uid, true)
 		arrived := 0
+		var changed []int64
+		set := func(rq store.Request, state, detail string) {
+			if rq.State == state && rq.Detail == detail {
+				return
+			}
+			if s.store.SetRequestState(ctx, uid, rq.ID, state, detail) == nil {
+				changed = append(changed, rq.ID)
+			}
+		}
 		for _, rq := range reqs {
 			var al lidarrAlbum
 			if err := l.do(ctx, http.MethodGet, "/album/"+strconv.FormatInt(rq.LidarrAlbumID, 10), nil, &al); err != nil {
 				if strings.Contains(err.Error(), "404") {
-					_ = s.store.SetRequestState(ctx, uid, rq.ID, "failed", "the album is no longer in Lidarr")
+					set(rq, "failed", "the album is no longer in Lidarr")
 				}
 				continue
 			}
@@ -672,7 +683,7 @@ func (s *Server) followRequests(ctx context.Context) {
 			}
 			switch q, inQueue := queue[al.ID]; {
 			case total > 0 && have >= total:
-				_ = s.store.SetRequestState(ctx, uid, rq.ID, "arrived", fmt.Sprintf("%d tracks", have))
+				set(rq, "arrived", fmt.Sprintf("%d tracks", have))
 				arrived++
 				s.publish(ctx, u, "music.album_arrived", rq.Artist+" — "+rq.Album, map[string]any{"artist": rq.Artist, "album": rq.Album, "year": rq.Year})
 				if st.NotifyArrived {
@@ -683,10 +694,13 @@ func (s *Server) followRequests(ctx context.Context) {
 				if q.Size > 0 {
 					pct = int((q.Size - q.SizeLeft) * 100 / q.Size)
 				}
-				_ = s.store.SetRequestState(ctx, uid, rq.ID, "downloading", fmt.Sprintf("%d%%", pct))
+				set(rq, "downloading", fmt.Sprintf("%d%%", pct))
 			case have > 0:
-				_ = s.store.SetRequestState(ctx, uid, rq.ID, "downloading", fmt.Sprintf("%d of %d tracks", have, total))
+				set(rq, "downloading", fmt.Sprintf("%d of %d tracks", have, total))
 			}
+		}
+		if len(changed) > 0 {
+			s.liveRequests(uid, "updated", changed...)
 		}
 		if arrived > 0 {
 			// let the music server pick the files up now instead of at its next scheduled scan

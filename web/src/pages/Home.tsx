@@ -9,6 +9,7 @@ import { Icon } from '../components/icons'
 import { AlbumCard, ArtistCard, Cover, MixCard, Shelf } from '../components/music'
 import { openCreate, shuffleLibrary } from '../components/Layout'
 import { Loading, errMsg, useAsync, useToast } from '../components/ui'
+import { isLibraryChange, useLiveRefresh } from '../lib/live'
 
 export async function playMix(m: Pick<Mix, 'key' | 'name'>) {
   const r = await api.get<{ mix: Mix; songs: Song[] }>(`${V1}/mixes/${m.key}`)
@@ -29,6 +30,8 @@ export default function Home() {
     window.addEventListener('pmu:synced', r)
     return () => window.removeEventListener('pmu:synced', r)
   }, [reload])
+  // plays (here, another tab, a phone app), stars and playlists change what Home shows
+  useLiveRefresh(ev => ev.type === 'listens' || ev.type === 'playlists' || isLibraryChange(ev), reload, 600)
   if (error) return <div className="callout danger"><Icon name="alert" size={15} />{error}</div>
   if (!h) return <Loading />
   const first = (user?.name || '').split(' ')[0]

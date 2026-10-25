@@ -1,7 +1,7 @@
 // React access to the audio engine and to the person's other devices.
 import { useEffect, useState, useSyncExternalStore } from 'react'
 import { api } from './api'
-import { onLive } from './live'
+import { onLive, startLive as openLive } from './live'
 import { V1, deviceId } from './music'
 import { player } from './player'
 import type { Device, Song } from './types'
@@ -53,6 +53,8 @@ function wireLive() {
       devSubs.forEach(f => f())
     }
     if (ev.type === 'command' && ev.data.target === deviceId()) player.command(ev.data.action, ev.data.value)
+    if (ev.type === 'stars' && ev.data.ids && ev.data.kind === 'song') player.patchSongs(ev.data.ids, { starred_at: ev.data.on ? new Date().toISOString() : '' })
+    if (ev.type === 'ratings' && ev.data.kind === 'song') player.patchSongs(ev.data.ids, { rating: ev.data.rating })
   })
 }
 export function useDevices() {
@@ -61,7 +63,7 @@ export function useDevices() {
   const me = deviceId()
   return { others: list.filter(d => d.id !== me), all: list, me }
 }
-export function startLive() { wireLive() }
+export function startLive() { wireLive(); openLive() }
 
 /** Is a device playing right now? An app counts until its song can have ended; a browser while it reports. */
 export function isLive(d: Device): boolean {

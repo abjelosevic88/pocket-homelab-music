@@ -231,6 +231,7 @@ func (s *Server) importMaloja(ctx context.Context, u *store.User, id int64, base
 	}
 	s.store.ImportProgress(ctx, id, "done", seen, imported, matched, "")
 	s.hub.send(u.ID, "import", map[string]any{"id": id, "state": "done", "seen": seen, "imported": imported})
+	s.liveListensImported(u.ID, imported)
 	s.log.Info("history imported", "source", "maloja", "user", u.Email, "seen", seen, "new", imported, "matched", matched)
 }
 
@@ -308,6 +309,7 @@ func (s *Server) importListenBrainz(ctx context.Context, u *store.User, id int64
 	}
 	s.store.ImportProgress(ctx, id, "done", seen, imported, matched, "")
 	s.hub.send(u.ID, "import", map[string]any{"id": id, "state": "done", "seen": seen, "imported": imported})
+	s.liveListensImported(u.ID, imported)
 	s.log.Info("history imported", "source", "listenbrainz", "user", u.Email, "seen", seen, "new", imported, "matched", matched)
 }
 

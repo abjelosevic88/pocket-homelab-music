@@ -11,6 +11,7 @@ import { useCrumb } from '../components/Layout'
 import { NotConnected } from './Home'
 import { ApiError } from '../lib/api'
 import { Loading, errMsg, useAsync, useToast } from '../components/ui'
+import { touches, useLiveRefresh } from '../lib/live'
 
 interface AlbumResp { album: AlbumT; songs: Song[]; more: AlbumT[]; genres: string[]; quality: string; notes?: string; lastfm_url?: string }
 
@@ -19,6 +20,9 @@ export default function Album() {
   const navigate = useNavigate()
   const { toast } = useToast()
   const { data, error, setData } = useAsync(() => api.get<AlbumResp>(`${V1}/albums/${id}?info=1`), [id])
+  // starred or rated elsewhere, or the index refreshed: the album again, without asking for its notes again
+  useLiveRefresh(ev => touches(ev, [id, ...(data?.songs || []).map(s => s.id)]),
+    () => api.get<AlbumResp>(`${V1}/albums/${id}`).then(r => setData(d => d ? { ...r, notes: d.notes, lastfm_url: d.lastfm_url } : r)).catch(() => {}))
   const [addTo, setAddTo] = useState<Song[] | null>(null)
   const [notesOpen, setNotesOpen] = useState(false)
   const color = useCoverColor(albumCover(id, 64))

@@ -4,7 +4,7 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState } f
 import { Outlet, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { api, V1 } from '../lib/api'
 import { useApp } from '../lib/app-context'
-import { onLive } from '../lib/live'
+import { onLive, useLiveRefresh } from '../lib/live'
 import { player, startLive } from '../lib/player-react'
 import type { Playlist, Song } from '../lib/types'
 import { Icon } from './icons'
@@ -78,6 +78,8 @@ export default function Layout() {
     window.addEventListener('pmu:playlists', h)
     return () => window.removeEventListener('pmu:playlists', h)
   }, [load])
+  // playlists made or changed in another tab, a phone app or by a smart refresh
+  useLiveRefresh(ev => ev.type === 'playlists', load)
   useEffect(() => onLive(ev => {
     if (ev.type === 'sync') {
       setSync(ev.data.state === 'syncing' ? ev.data : null)

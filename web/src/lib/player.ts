@@ -90,6 +90,14 @@ export class Player {
     this.listeners.forEach(f => f())
   }
 
+  /** A change made elsewhere (a star in another tab or app): the queue's copies follow. */
+  patchSongs(ids: string[], patch: Partial<Song>) {
+    const want = new Set(ids)
+    let hit = false
+    const queue = this.state.queue.map(s => { if (!want.has(s.id)) return s; hit = true; return { ...s, ...patch } })
+    if (hit) this.set({ queue })
+  }
+
   get el() { return this.a[this.cur] }
   get other() { return this.a[1 - this.cur] }
   get current(): Song | null { return this.state.queue[this.state.index] || null }

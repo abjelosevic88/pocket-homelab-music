@@ -359,6 +359,7 @@ func (s *Server) lyricsIndex(ctx context.Context, dir string) (read, dropped int
 			s.lix.mu.Lock()
 			s.lix.done = read
 			s.lix.mu.Unlock()
+			s.liveLyricsJob("index", "running", read, len(todo))
 		}
 	}
 	if len(have) > 0 {
@@ -389,21 +390,25 @@ func (s *Server) lyricsIndexFile(ctx context.Context, file string) {
 	if err != nil {
 		return
 	}
+	var id int64
+	rel := s.relToMusicDir(file)
 	if en, ok := s.lyricsEntryFor(file); ok {
 		in := readLyricsInfo(en)
 		err = lyricsIndexPut(ctx, tx, en, in)
-	} else {
-		var id int64
-		if tx.QueryRowContext(ctx, `SELECT id FROM lyrics_files WHERE path = ?`, s.relToMusicDir(file)).Scan(&id) == nil {
-			err = lyricsIndexDrop(ctx, tx, id)
+		if err == nil {
+			_ = tx.QueryRowContext(ctx, `SELECT id FROM lyrics_files WHERE path = ?`, rel).Scan(&id)
 		}
+	} else if tx.QueryRowContext(ctx, `SELECT id FROM lyrics_files WHERE path = ?`, rel).Scan(&id) == nil {
+		err = lyricsIndexDrop(ctx, tx, id)
 	}
 	if err != nil {
 		_ = tx.Rollback()
 		s.log.Warn("lyrics index", "file", file, "err", err)
 		return
 	}
-	_ = tx.Commit()
+	if tx.Commit() == nil {
+		s.liveLyrics(id)
+	}
 }
 
 // startLyricsIndex refreshes the whole index in the background.
@@ -418,14 +423,19 @@ func (s *Server) startLyricsIndex() bool {
 		s.lix.mu.Lock()
 		s.lix.running, s.lix.done, s.lix.total = true, 0, 0
 		s.lix.mu.Unlock()
+		state, read := "done", 0
+		// told last, once the status no longer says running
+		defer func() { s.liveLyricsJob("index", state, read, read) }()
 		defer func() {
 			s.lix.mu.Lock()
 			s.lix.running = false
 			s.lix.mu.Unlock()
 		}()
+		s.liveLyricsJob("index", "running", 0, 0)
 		t0 := time.Now()
 		read, dropped, err := s.lyricsIndex(ctx, s.cfg.MusicDir)
 		if err != nil {
+			state = "error"
 			s.log.Warn("lyrics index", "err", err)
 			return
 		}

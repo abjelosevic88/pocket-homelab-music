@@ -12,6 +12,7 @@ import { useApp } from '../lib/app-context'
 import { isOffline } from '../lib/offline'
 import { Icon } from './icons'
 import { Cover, StarButton, AddToPlaylist, startRadio, useCoverColor } from './music'
+import { onLive } from '../lib/live'
 import { type Anchor, Menu, type MenuItem, rectOf, useIsMobile, useToast, errMsg } from './ui'
 
 export function PlayerBar() {
@@ -299,6 +300,17 @@ function LyricsPane({ song, onlyLyrics, onClose }: { song: Song; onlyLyrics: boo
     setLy(null); setErr(''); setSaving('')
     api.get<Lyrics>(`${V1}/lyrics/${encodeURIComponent(song.id)}`).then(setLy).catch(e => setErr(errMsg(e)))
   }, [song.id])
+  // this song's lyrics edited or fetched elsewhere (the Lyrics page, another tab): show the new ones
+  const fileId = useRef<{ song: string; id: number | null } | null>(null)
+  useEffect(() => onLive(ev => {
+    if (ev.type !== 'lyrics' || ev.data.many) return
+    const changed = ev.data.file_ids
+    const check = (id: number | null) => { if (id && changed.includes(id)) api.get<Lyrics>(`${V1}/lyrics/${encodeURIComponent(song.id)}`).then(setLy).catch(() => {}) }
+    if (fileId.current?.song === song.id) { check(fileId.current.id); return }
+    api.get<{ id: number }>(`${V1}/lyrics-files/by-song/${encodeURIComponent(song.id)}`)
+      .then(r => { fileId.current = { song: song.id, id: r.id }; check(r.id) })
+      .catch(() => { fileId.current = { song: song.id, id: null } })
+  }), [song.id])
   const ms = position * 1000
   const active = useMemo(() => {
     if (!ly?.synced) return -1

@@ -99,7 +99,7 @@ func (s *Server) handleAddListen(w http.ResponseWriter, r *http.Request) {
 				}
 			}()
 		}
-		s.hub.send(u.ID, "listen", l)
+		s.liveListens(u.ID, l)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"listen": l, "added": added})
 }
@@ -109,6 +109,7 @@ func (s *Server) handleDeleteListen(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, err, "delete play")
 		return
 	}
+	s.liveListenDeleted(actorID(r.Context()), idParam(r, "id"))
 	w.WriteHeader(http.StatusNoContent)
 }
 

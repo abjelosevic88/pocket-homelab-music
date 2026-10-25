@@ -27,81 +27,209 @@ type liveEvent struct {
 	Data any    `json:"data"`
 }
 
+// Live events carry ids and small facts, never whole objects: a page that
+// shows the thing refetches it. Each goes only to the person it is about;
+// box-wide facts (lyrics files, the lyrics jobs) to everyone who can see them.
+//
+//	devices / device / command      this person's devices (now playing, remote control)
+//	sync         {state, progress, songs, …}   library index rebuild; state "idle" = refreshed
+//	listens      {ids, song_ids} | {deleted: [ids]} | {imported: n}
+//	stars        {kind, ids, on} | {refreshed: true}   (web, /rest star/unstar, server stars)
+//	ratings      {kind, ids, rating}
+//	playlists    {action: created|updated|deleted, ids, smart_id?}
+//	requests     {ids, action: added|updated|deleted}  Lidarr album requests
+//	lyrics       {file_ids}            a song's lyrics changed (everyone)
+//	lyrics_job   {kind: run|index, state, done, total} (run: admins, index: everyone)
+//	import       {id, state?, seen, imported}         history import progress
+//	hello        {server_time}         first on every (re)connect: refetch what is shown
+
+type liveSub struct {
+	uid   int64
+	admin bool
+	ch    chan liveEvent
+	check chan struct{} // look at the sign-in again now (logout, token deleted)
+	gone  chan struct{} // closed: too slow, or the account is gone
+	once  sync.Once
+}
+
+func (c *liveSub) stop() { c.once.Do(func() { close(c.gone) }) }
+
 type hub struct {
 	mu   sync.Mutex
-	subs map[int64]map[chan liveEvent]bool
+	subs map[int64]map[*liveSub]struct{}
+	n    int
 }
 
-func newHub() *hub { return &hub{subs: map[int64]map[chan liveEvent]bool{}} }
+const (
+	liveMaxPerUser = 16   // tabs and phones of one person
+	liveMaxTotal   = 2048 // the whole box
+	liveBuffer     = 64   // events queued per stream before it counts as too slow
+)
 
-func (h *hub) subscribe(uid int64) chan liveEvent {
-	ch := make(chan liveEvent, 32)
-	h.mu.Lock()
-	if h.subs[uid] == nil {
-		h.subs[uid] = map[chan liveEvent]bool{}
-	}
-	h.subs[uid][ch] = true
-	h.mu.Unlock()
-	return ch
-}
+// liveKeepAlive is how often a comment keeps proxies from closing the stream,
+// and how often the sign-in behind it is checked again.
+var liveKeepAlive = 20 * time.Second
 
-func (h *hub) unsubscribe(uid int64, ch chan liveEvent) {
-	h.mu.Lock()
-	delete(h.subs[uid], ch)
-	if len(h.subs[uid]) == 0 {
-		delete(h.subs, uid)
-	}
-	h.mu.Unlock()
-}
+func newHub() *hub { return &hub{subs: map[int64]map[*liveSub]struct{}{}} }
 
-// send delivers an event to every open device of one person (never blocks).
-func (h *hub) send(uid int64, typ string, data any) {
+// subscribe adds a stream for one person; false when there are too many.
+func (h *hub) subscribe(uid int64, admin bool) (*liveSub, bool) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	for ch := range h.subs[uid] {
-		select {
-		case ch <- liveEvent{Type: typ, Data: data}:
-		default: // a slow tab misses an update; the next one carries the state again
+	if len(h.subs[uid]) >= liveMaxPerUser || h.n >= liveMaxTotal {
+		return nil, false
+	}
+	c := &liveSub{uid: uid, admin: admin, ch: make(chan liveEvent, liveBuffer), check: make(chan struct{}, 1), gone: make(chan struct{})}
+	if h.subs[uid] == nil {
+		h.subs[uid] = map[*liveSub]struct{}{}
+	}
+	h.subs[uid][c] = struct{}{}
+	h.n++
+	return c, true
+}
+
+func (h *hub) unsubscribe(c *liveSub) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if _, ok := h.subs[c.uid][c]; !ok {
+		return
+	}
+	delete(h.subs[c.uid], c)
+	h.n--
+	if len(h.subs[c.uid]) == 0 {
+		delete(h.subs, c.uid)
+	}
+}
+
+// deliver queues ev without ever blocking: a stream that can't keep up is
+// ended instead, and its page reconnects and refetches (nothing is lost).
+func deliver(c *liveSub, ev liveEvent) {
+	select {
+	case <-c.gone:
+	case c.ch <- ev:
+	default:
+		c.stop()
+	}
+}
+
+// send delivers an event to every open device of one person.
+func (h *hub) send(uid int64, typ string, data any) {
+	ev := liveEvent{Type: typ, Data: data}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	for c := range h.subs[uid] {
+		deliver(c, ev)
+	}
+}
+
+// broadcast delivers a box-wide event (lyrics files, lyrics jobs) to everyone,
+// or only to admins.
+func (h *hub) broadcast(typ string, data any, adminsOnly bool) {
+	ev := liveEvent{Type: typ, Data: data}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	for _, cs := range h.subs {
+		for c := range cs {
+			if !adminsOnly || c.admin {
+				deliver(c, ev)
+			}
 		}
 	}
 }
 
-func (h *hub) drop(uid int64) {
+// recheck makes the person's streams verify their sign-in now.
+func (h *hub) recheck(uid int64) {
 	h.mu.Lock()
-	delete(h.subs, uid)
-	h.mu.Unlock()
+	defer h.mu.Unlock()
+	for c := range h.subs[uid] {
+		select {
+		case c.check <- struct{}{}:
+		default:
+		}
+	}
 }
 
-// handleEvents streams the person's live updates.
+// drop ends every stream of a deleted account.
+func (h *hub) drop(uid int64) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	for c := range h.subs[uid] {
+		c.stop()
+		h.n--
+	}
+	delete(h.subs, uid)
+}
+
+// handleEvents streams the person's live updates (server-sent events).
 func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
-	fl, ok := w.(http.Flusher)
-	if !ok {
-		writeErr(w, http.StatusInternalServerError, "streaming unsupported")
+	u := userFrom(r.Context())
+	if u == nil {
+		writeErr(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
-	uid := actorID(r.Context())
-	ch := s.hub.subscribe(uid)
-	defer s.hub.unsubscribe(uid, ch)
-	w.Header().Set("Content-Type", "text/event-stream")
-	w.Header().Set("Cache-Control", "no-cache")
-	w.Header().Set("X-Accel-Buffering", "no")
-	write := func(ev liveEvent) {
-		b, _ := json.Marshal(ev)
-		fmt.Fprintf(w, "data: %s\n\n", b)
-		fl.Flush()
+	rc := http.NewResponseController(w)
+	c, ok := s.hub.subscribe(u.ID, u.Role == "admin")
+	if !ok {
+		writeErr(w, http.StatusTooManyRequests, "too many live connections")
+		return
 	}
-	write(liveEvent{Type: "devices", Data: s.deviceList(r.Context(), uid)})
-	tick := time.NewTicker(20 * time.Second)
+	defer s.hub.unsubscribe(c)
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("X-Accel-Buffering", "no")
+	w.WriteHeader(http.StatusOK)
+	write := func(b string) bool {
+		_ = rc.SetWriteDeadline(time.Now().Add(15 * time.Second))
+		if _, err := fmt.Fprint(w, b); err != nil {
+			return false
+		}
+		return rc.Flush() == nil
+	}
+	event := func(ev liveEvent) bool {
+		b, err := json.Marshal(ev)
+		if err != nil {
+			return true
+		}
+		return write("data: " + string(b) + "\n\n")
+	}
+	if !write("retry: 3000\n\n") ||
+		!event(liveEvent{Type: "hello", Data: map[string]any{"server_time": time.Now().UnixMilli()}}) ||
+		!event(liveEvent{Type: "devices", Data: s.deviceList(r.Context(), u.ID)}) {
+		return
+	}
+	// signedIn: a revoked session, a deleted token or account ends the stream,
+	// not only the next request.
+	signedIn := func() bool {
+		again, _, err := s.resolveAuth(r)
+		if err != nil || again == nil || again.ID != u.ID {
+			write("event: unauthorized\ndata: {}\n\n")
+			return false
+		}
+		s.hub.mu.Lock()
+		c.admin = again.Role == "admin"
+		s.hub.mu.Unlock()
+		return true
+	}
+	tick := time.NewTicker(liveKeepAlive)
 	defer tick.Stop()
 	for {
 		select {
 		case <-r.Context().Done():
 			return
-		case ev := <-ch:
-			write(ev)
+		case <-c.gone:
+			return // too slow or the account is gone: the page reconnects and refetches
+		case ev := <-c.ch:
+			if !event(ev) {
+				return
+			}
+		case <-c.check:
+			if !signedIn() {
+				return
+			}
 		case <-tick.C:
-			fmt.Fprint(w, ": keep-alive\n\n")
-			fl.Flush()
+			if !signedIn() || !write(": keep-alive\n\n") {
+				return
+			}
 		}
 	}
 }

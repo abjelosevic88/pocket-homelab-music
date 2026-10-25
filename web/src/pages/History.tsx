@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { api } from '../lib/api'
 import { V1, albumCover, longDuration, tz } from '../lib/music'
@@ -8,6 +8,7 @@ import { fmtDate, fmtTime } from '../lib/format'
 import { Icon } from '../components/icons'
 import { Cover } from '../components/music'
 import { Empty, Loading, Spinner, errMsg, useDebounce, useToast } from '../components/ui'
+import { onLive } from '../lib/live'
 
 export default function History() {
   const { toast } = useToast()
@@ -23,6 +24,36 @@ export default function History() {
     return r.listens
   }
   useEffect(() => { setItems(null); load().then(setItems).catch(e => toast(errMsg(e), 'err')) }, [dq]) // eslint-disable-line react-hooks/exhaustive-deps
+  // plays from another tab, a phone app or an import show up at once; deleted ones go
+  const dqRef = useRef(dq)
+  dqRef.current = dq
+  useEffect(() => {
+    let t: number | undefined
+    const fresh = (replace: boolean) => {
+      clearTimeout(t)
+      t = window.setTimeout(async () => {
+        const q = dqRef.current
+        const r = await api.get<{ listens: Listen[]; total: number; more: boolean }>(`${V1}/history?tz=${tz()}&limit=150${q ? `&q=${encodeURIComponent(q)}` : ''}`).catch(() => null)
+        if (!r || q !== dqRef.current) return
+        setTotal(r.total)
+        if (replace) { setItems(r.listens); setMore(r.more); return }
+        setItems(cur => {
+          if (!cur) return r.listens
+          const have = new Set(cur.map(l => l.id))
+          const add = r.listens.filter(l => !have.has(l.id))
+          return add.length ? [...add, ...cur].sort((x, y) => y.played_at.localeCompare(x.played_at)) : cur
+        })
+      }, 300)
+    }
+    const off = onLive(ev => {
+      if (ev.type === 'resync') fresh(true)
+      if (ev.type !== 'listens') return
+      if (ev.data.deleted) { const gone = new Set(ev.data.deleted); setItems(cur => cur && cur.filter(l => !gone.has(l.id))); setTotal(n => Math.max(0, n - gone.size)) }
+      if (ev.data.imported) fresh(true)
+      if (ev.data.ids) fresh(false)
+    })
+    return () => { clearTimeout(t); off() }
+  }, [])
   const days = useMemo(() => {
     const out: { day: string; items: Listen[]; seconds: number }[] = []
     for (const l of items || []) {
@@ -45,7 +76,7 @@ export default function History() {
     try { const s = await api.get<Song>(`${V1}/songs/${l.song_id}`); player.playSongs([s], 0, { kind: 'songs', name: 'History', link: '/history' }) } catch (e) { toast(errMsg(e), 'err') }
   }
   const remove = async (l: Listen) => {
-    try { await api.del(`${V1}/listens/${l.id}`); setItems(items!.filter(x => x.id !== l.id)) } catch (e) { toast(errMsg(e), 'err') }
+    try { await api.del(`${V1}/listens/${l.id}`); setItems(cur => cur && cur.filter(x => x.id !== l.id)) } catch (e) { toast(errMsg(e), 'err') }
   }
   const today = new Date().toISOString().slice(0, 10)
   return (

@@ -900,6 +900,7 @@ func (s *Server) publishMixes(ctx context.Context, uid int64) error {
 			}
 		}
 		s.saveMixPlaylists(ctx, uid, have)
+		s.livePlaylists(uid, "deleted", nil, 0)
 		return nil
 	}
 	_, off := time.Now().Zone()
@@ -943,6 +944,11 @@ func (s *Server) publishMixes(ctx context.Context, uid int64) error {
 		}
 	}
 	s.saveMixPlaylists(ctx, uid, have)
+	ids := make([]string, 0, len(have))
+	for _, id := range have {
+		ids = append(ids, id)
+	}
+	s.livePlaylists(uid, "updated", ids, 0)
 	return nil
 }
 

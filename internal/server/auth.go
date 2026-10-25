@@ -248,6 +248,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 	if c, err := r.Cookie(sessionCookie); err == nil {
 		_ = s.store.DeleteSession(r.Context(), c.Value)
+		s.hub.recheck(actorID(r.Context())) // that session's live streams end now
 	}
 	s.setSessionCookie(w, "", -1)
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
@@ -407,6 +408,7 @@ func (s *Server) handleUpdateUser(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, err, "update user")
 		return
 	}
+	s.hub.recheck(u.ID) // a new role reaches the open streams
 	writeJSON(w, http.StatusOK, u)
 }
 
@@ -470,5 +472,6 @@ func (s *Server) handleDeleteToken(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, err, "delete token")
 		return
 	}
+	s.hub.recheck(userFrom(r.Context()).ID) // streams opened with that token end now
 	w.WriteHeader(http.StatusNoContent)
 }

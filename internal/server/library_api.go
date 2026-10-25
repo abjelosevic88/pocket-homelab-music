@@ -461,6 +461,7 @@ func (s *Server) handleStar(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_ = s.store.SetStarred(ctx, u.ID, in.Kind, in.ID, in.On)
+	s.liveStars(u.ID, in.Kind, []string{in.ID}, in.On)
 	if in.On {
 		subject := ""
 		switch in.Kind {
@@ -502,6 +503,7 @@ func (s *Server) handleRate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_ = s.store.SetRating(ctx, actorID(ctx), in.Kind, in.ID, in.Rating)
+	s.liveRatings(actorID(ctx), in.Kind, []string{in.ID}, in.Rating)
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 

@@ -270,6 +270,7 @@ func (s *Server) handleMakeMix(w http.ResponseWriter, r *http.Request) {
 				comment := firstNonEmpty(plan.Description, "Made by Pocket Music from: "+in.Prompt)
 				_ = mc.c.UpdatePlaylistComment(ctx, pl.ID, comment)
 				out["playlist_id"] = pl.ID
+				s.livePlaylists(u.ID, "created", []string{pl.ID}, 0)
 			}
 		}
 	}

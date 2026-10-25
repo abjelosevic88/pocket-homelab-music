@@ -45,7 +45,8 @@ type Server struct {
 	syncMu  sync.Mutex
 	syncing map[int64]bool // people whose index is being rebuilt
 
-	hub *hub // live updates per person (now playing, devices, sync progress)
+	hub  *hub      // live updates per person (now playing, devices, sync progress, changes)
+	live liveState // batching for box-wide live events
 
 	jobsMu sync.Mutex
 	jobs   map[string]bool // background jobs running (imports, smart refreshes)

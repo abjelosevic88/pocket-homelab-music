@@ -35,7 +35,7 @@ that needs the server.
 | `DELETE /listens/{id}` | Remove a play |
 | `POST /now {"device_id","device_name","song_id","queue":[ids],"queue_index","position_ms","playing","started"}` | A device's report; `queue` only when it changed |
 | `GET /devices` · `GET /devices/{id}/queue` · `POST /devices/{id}/command {"action":"play|pause|toggle|next|previous|seek|volume","value"}` · `DELETE /devices/{id}` | Your devices, take one's queue over, remote control |
-| `GET /events` | Server-sent events: `devices`, `device`, `command`, `sync`, `listen`, `import` |
+| `GET /events` | Live updates as server-sent events — see [Live updates](#live-updates) |
 | `GET /server/now-playing` | What your other Subsonic players are playing according to the server |
 
 ## Lyrics
@@ -88,6 +88,36 @@ that needs the server.
 | `POST /requests {"lidarr_id"}` or `{"foreign_id","artist_foreign_id","artist","title"}` | Monitor and search an album (adding its artist, monitoring nothing else, when needed) |
 | `GET /requests` · `DELETE /requests/{id}` | Your requests: requested, downloading, arrived, failed |
 | `GET /releases` | Lidarr's calendar for the last 45 and next 120 days |
+
+## Live updates
+
+`GET /api/v1/events` is a [server-sent events](https://html.spec.whatwg.org/multipage/server-sent-events.html) stream
+for the web app (cookie, bearer or `pmu_` token). Each `data:` line is `{"type","data"}`. Events carry ids and small
+facts, never whole objects: a page that shows the thing fetches it again. Each event goes only to the person it is
+about; lyrics are files on the box, the same for everyone, so their events go to everyone who is signed in (a lyrics
+*run* only to admins).
+
+| `type` | `data` | When |
+|---|---|---|
+| `hello` | `{"server_time"}` | First on every (re)connect — after a drop, fetch again what is shown |
+| `devices` · `device` · `command` | device list · one device · `{"target","action","value","from"}` | Your devices, now playing, remote control |
+| `sync` | `{"state":"syncing\|idle\|error","progress","songs",…}` | Library index rebuild; `idle` = the library changed |
+| `listens` | `{"ids","song_ids"}` · `{"deleted":[ids]}` · `{"imported":n}` | A play recorded (web, API, or a Subsonic app's `scrobble`), removed, or imported |
+| `stars` | `{"kind","ids","on"}` · `{"refreshed":true}` | Starred or unstarred here or through `/rest` `star`/`unstar`; `refreshed` when the index's stars caught up with the music server (an app that talks to it directly) |
+| `ratings` | `{"kind","ids","rating"}` | Rated here or through `/rest` `setRating` |
+| `playlists` | `{"action":"created\|updated\|deleted","ids","smart_id"?}` | A playlist made, changed or deleted (web, `/rest`, smart playlist refresh, daily mixes written back, "make me a mix") |
+| `requests` | `{"action":"added\|updated\|deleted","ids"}` | Album requests; `updated` when Lidarr reports downloading or arrived |
+| `lyrics` | `{"file_ids"}` · `{"file_ids":[],"many":n}` | Lyrics files changed (edited, fetched, deleted, a run), sent together once a second |
+| `lyrics_job` | `{"kind":"run\|index","state","done","total"}` | A lyrics run (admins) or the folder read (everyone): new states at once, progress every two seconds; `idle`/`done`/`error` at the end |
+| `import` | `{"id","state"?,"seen","imported"}` | History import progress |
+
+A comment line every 20 seconds keeps proxies from closing the stream, and the sign-in behind it is checked again
+then — signing out, deleting the token or the account ends the stream with `event: unauthorized` (at once for the
+first two). A stream that can't keep up (64 events queued) is closed rather than waited for; the browser reconnects
+and the `hello` tells the page to fetch again. At most 16 streams per person.
+
+Subsonic/OpenSubsonic has no push channel, so phone and car apps don't get these; what they change still reaches
+the web at once.
 
 ## Subsonic apps (`/rest/*`)
 

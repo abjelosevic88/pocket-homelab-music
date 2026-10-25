@@ -8,6 +8,7 @@ import { fmtDate } from '../lib/format'
 import { Icon } from '../components/icons'
 import { Cover } from '../components/music'
 import { Confirm, Empty, Loading, Segmented, Spinner, errMsg, useDebounce, useToast } from '../components/ui'
+import { useLiveRefresh } from '../lib/live'
 
 function LidarrOff({ message }: { message: string }) {
   return (
@@ -80,6 +81,7 @@ export function Requests() {
   const [busy, setBusy] = useState('')
   const [del, setDel] = useState<Request | null>(null)
   const load = () => api.get<Request[]>(`${V1}/requests`).then(setReqs).catch(e => toast(errMsg(e), 'err'))
+  useLiveRefresh(ev => ev.type === 'requests', load) // requested in another tab; downloading, arrived
   useEffect(() => { load(); api.get<{ ready: boolean; detail: string }>(`${V1}/lidarr/status`).then(s => { if (!s.ready) setOff(s.detail) }).catch(() => {}) }, []) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!dq.trim()) { setRes(null); return }

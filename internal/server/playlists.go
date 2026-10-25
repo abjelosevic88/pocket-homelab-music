@@ -131,6 +131,7 @@ func (s *Server) handleCreatePlaylist(w http.ResponseWriter, r *http.Request) {
 		c, pub := in.Comment, in.Public
 		_ = mc.c.UpdatePlaylist(ctx, p.ID, subsonic.PlaylistUpdate{Comment: &c, Public: &pub})
 	}
+	s.livePlaylists(actorID(ctx), "created", []string{p.ID}, 0)
 	s.publish(ctx, userFrom(ctx), "music.playlist_created", in.Name, map[string]any{"id": p.ID, "name": in.Name, "songs": len(in.SongIDs)})
 	writeJSON(w, http.StatusCreated, p.Playlist)
 }
@@ -172,6 +173,7 @@ func (s *Server) handleUpdatePlaylist(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	s.livePlaylists(actorID(ctx), "updated", []string{id}, 0)
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
@@ -186,9 +188,12 @@ func (s *Server) handleDeletePlaylist(w http.ResponseWriter, r *http.Request) {
 		s.musicErr(w, err)
 		return
 	}
+	var smartID int64
 	if sp, err := s.store.SmartByPlaylist(ctx, actorID(ctx), id); err == nil {
 		_ = s.store.DeleteSmart(ctx, actorID(ctx), sp.ID)
+		smartID = sp.ID
 	}
+	s.livePlaylists(actorID(ctx), "deleted", []string{id}, smartID)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -508,7 +513,13 @@ func (s *Server) refreshSmart(ctx context.Context, u *store.User, p *store.Smart
 		return err
 	}
 	_ = mc.c.UpdatePlaylist(ctx, plID, subsonic.PlaylistUpdate{Name: &name, Comment: &comment})
-	return s.store.SmartRefreshed(ctx, u.ID, p.ID, plID, len(songs), secs, "")
+	err = s.store.SmartRefreshed(ctx, u.ID, p.ID, plID, len(songs), secs, "")
+	action := "updated"
+	if p.PlaylistID == "" || p.PlaylistID != plID {
+		action = "created"
+	}
+	s.livePlaylists(u.ID, action, []string{plID}, p.ID)
+	return err
 }
 
 // refreshDueSmart refreshes daily smart playlists last built before today (janitor).
@@ -617,6 +628,7 @@ func (s *Server) handleSmartSave(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := s.refreshSmart(ctx, u, &p); err != nil {
 		s.log.Warn("smart playlist", "err", err)
+		s.livePlaylists(u.ID, "updated", nil, p.ID) // the rules are saved even when the server isn't
 	}
 	saved, _ := s.store.GetSmart(ctx, u.ID, p.ID)
 	if created && saved != nil {
@@ -659,5 +671,10 @@ func (s *Server) handleSmartDelete(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, err, "delete smart playlist")
 		return
 	}
+	ids := []string{}
+	if p.PlaylistID != "" && !queryBool(r, "keep") {
+		ids = append(ids, p.PlaylistID)
+	}
+	s.livePlaylists(u.ID, "deleted", ids, p.ID)
 	w.WriteHeader(http.StatusNoContent)
 }

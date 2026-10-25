@@ -391,5 +391,9 @@ func (s *Server) handleImportJSON(w http.ResponseWriter, r *http.Request) {
 	}
 	linked, _ := s.store.RelinkListens(ctx, uid)
 	counts["matched"] = linked
+	s.liveListensImported(uid, n)
+	if counts["smart_playlists"] > 0 {
+		s.livePlaylists(uid, "created", nil, 0)
+	}
 	writeJSON(w, http.StatusOK, counts)
 }

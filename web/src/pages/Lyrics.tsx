@@ -14,6 +14,7 @@ import { Cover } from '../components/music'
 import { useCrumb } from '../components/Layout'
 import { Empty, Kbd, Loading, Modal, Segmented, Spinner, Switch, errMsg, useDebounce, useToast } from '../components/ui'
 import { usePaged } from './Library'
+import { onLive, usePollWhileDown } from '../lib/live'
 
 // ---------- LRC ----------
 
@@ -112,19 +113,44 @@ export function LyricsLibrary() {
   const { items, total, busy, error, sentinel } = usePaged<LyricsFile>(off => api.get<LyricsIndexPage>(`${V1}/lyrics-index?${qs}&limit=100&offset=${off}`)
     .then(r => { if (off === 0) setMeta({ counts: r.counts, status: r.status }); return { items: r.items, total: r.total } }), key)
 
-  // while the folder is read or lyrics are fetched: follow along, then show the result
+  // while the folder is read or lyrics are fetched: follow along (live events), then show the result
   const status = meta?.status
   const working = !!(status?.index.running || status?.job?.running)
+  const workingRef = useRef(working)
+  workingRef.current = working
+  const qsRef = useRef(qs)
+  qsRef.current = qs
+  const loadMeta = (relist = false) => api.get<LyricsIndexPage>(`${V1}/lyrics-index?${qsRef.current}&limit=1`).then(r => {
+    setMeta({ counts: r.counts, status: r.status })
+    if (relist || (workingRef.current && !r.status.index.running && !r.status.job?.running)) setRev(v => v + 1)
+  }).catch(() => {})
+  const itemsRef = useRef(items)
+  itemsRef.current = items
   useEffect(() => {
-    if (!working) return
-    const t = setInterval(() => {
-      api.get<LyricsIndexPage>(`${V1}/lyrics-index?${qs}&limit=1`).then(r => {
-        setMeta({ counts: r.counts, status: r.status })
-        if (!r.status.index.running && !r.status.job?.running) setRev(v => v + 1)
-      }).catch(() => {})
-    }, 3000)
-    return () => clearInterval(t)
-  }, [working, qs])
+    let metaT: number | undefined
+    let relistToo = false
+    const meta = (relist = false) => {
+      relistToo ||= relist
+      clearTimeout(metaT)
+      metaT = window.setTimeout(() => { const r = relistToo; relistToo = false; loadMeta(r) }, 250)
+    }
+    const off = onLive(ev => {
+      if (ev.type === 'resync') meta(true)
+      if (ev.type === 'lyrics_job') meta(ev.data.state !== 'running')
+      if (ev.type === 'lyrics') {
+        // a song's lyrics changed elsewhere (the editor in another tab, a run): the rows shown follow
+        const rows = itemsRef.current || []
+        const mine = ev.data.file_ids.filter(id => rows.some(i => i.id === id))
+        if (ev.data.many || mine.length > 20) { meta(true); return }
+        meta()
+        for (const id of mine) {
+          api.get<LyricsFileDetail>(`${V1}/lyrics-files/${id}`).then(d => setPatched(m => ({ ...m, [id]: { ...d.file, snippet: m[id]?.snippet ?? rows.find(i => i.id === id)?.snippet ?? '' } }))).catch(() => {})
+        }
+      }
+    })
+    return () => { clearTimeout(metaT); off() }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  usePollWhileDown(() => loadMeta(), 5000, working)
 
   const fetchOne = async (f: LyricsFile) => {
     setFetching(m => ({ ...m, [f.id]: true }))
@@ -287,6 +313,14 @@ export function LyricsEditor() {
   const take = (r: LyricsFileDetail) => { setD(r); setText(r.text); setBase(r.text) }
   useEffect(() => { setD(null); setErr(''); setTap(null); api.get<LyricsFileDetail>(`${V1}/lyrics-files/${id}`).then(take).catch(e => setErr(errMsg(e))) }, [id])
   const dirty = !!d && text !== base
+  // changed in another tab or by a run: take it, unless there are edits here to keep
+  const dirtyRef = useRef(dirty)
+  dirtyRef.current = dirty
+  useEffect(() => onLive(ev => {
+    if ((ev.type === 'lyrics' && (ev.data.many || ev.data.file_ids.includes(Number(id)))) || ev.type === 'resync') {
+      if (!dirtyRef.current) api.get<LyricsFileDetail>(`${V1}/lyrics-files/${id}`).then(take).catch(() => {})
+    }
+  }), [id]) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!dirty) return
     const h = (e: BeforeUnloadEvent) => { e.preventDefault() }

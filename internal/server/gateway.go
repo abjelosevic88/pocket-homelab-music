@@ -44,6 +44,12 @@ var gatewayStreams = map[string]bool{"stream": true, "download": true, "getCover
 
 var gatewayMethod = regexp.MustCompile(`^[A-Za-z0-9]{1,40}$`)
 
+// gatewayChanges are calls that change the person's data: after the music
+// server says ok, the index follows and the person's open pages are told.
+var gatewayChanges = map[string]bool{"star": true, "unstar": true, "setRating": true, "createPlaylist": true, "updatePlaylist": true, "deletePlaylist": true}
+
+var gatewayOK = regexp.MustCompile(`"status"\s*:\s*"ok"|status="ok"`)
+
 // failures counts wrong passwords per user name for a short lockout.
 type failures struct {
 	mu sync.Mutex
@@ -209,6 +215,9 @@ func (s *Server) handleGateway(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	for _, k := range []string{"Range", "If-Range", "If-None-Match", "If-Modified-Since", "Accept", "Accept-Encoding"} {
+		if k == "Accept-Encoding" && gatewayChanges[method] {
+			continue // the answer is read here: let the transport unzip it
+		}
 		if v := r.Header.Get(k); v != "" {
 			req.Header.Set(k, v)
 		}
@@ -225,6 +234,16 @@ func (s *Server) handleGateway(w http.ResponseWriter, r *http.Request) {
 		if v := res.Header.Get(k); v != "" {
 			w.Header().Set(k, v)
 		}
+	}
+	if gatewayChanges[method] && res.StatusCode == http.StatusOK {
+		body, err := io.ReadAll(io.LimitReader(res.Body, 1<<20))
+		w.Header().Del("Content-Length")
+		w.WriteHeader(res.StatusCode)
+		_, _ = w.Write(body)
+		if err == nil && gatewayOK.Match(body) {
+			s.gatewayChanged(ctx, u, method, q)
+		}
+		return
 	}
 	w.WriteHeader(res.StatusCode)
 	buf := make([]byte, 64<<10)
@@ -281,10 +300,55 @@ func (s *Server) gatewayScrobble(ctx context.Context, u *store.User, mc *musicCo
 		l := &store.Listen{SongID: so.ID, Title: so.Title, Artist: so.Artist, Album: so.Album, AlbumID: so.AlbumID, ArtistID: firstNonEmpty(so.ArtistID, so.AlbumArtistID),
 			Genre: so.Genre, Duration: so.Duration, PlayedAt: store.Stamp(at), Source: "subsonic", Device: device}
 		if added, err := s.store.AddListen(ctx, u.ID, l); err == nil && added {
-			s.hub.send(u.ID, "listen", l)
+			s.liveListens(u.ID, l)
 		}
 	}
 	_ = mc
+}
+
+// gatewayChanged keeps the index in step with what an app changed on the
+// music server, and tells the person's open pages.
+func (s *Server) gatewayChanged(ctx context.Context, u *store.User, method string, q url.Values) {
+	switch method {
+	case "star", "unstar":
+		on := method == "star"
+		// a plain id may be a song, an album or an artist (ids don't collide)
+		for _, id := range q["id"] {
+			for _, kind := range []string{"song", "album", "artist"} {
+				_ = s.store.SetStarred(ctx, u.ID, kind, id, on)
+			}
+		}
+		for _, id := range q["albumId"] {
+			_ = s.store.SetStarred(ctx, u.ID, "album", id, on)
+		}
+		for _, id := range q["artistId"] {
+			_ = s.store.SetStarred(ctx, u.ID, "artist", id, on)
+		}
+		s.liveStars(u.ID, "song", q["id"], on)
+		s.liveStars(u.ID, "album", q["albumId"], on)
+		s.liveStars(u.ID, "artist", q["artistId"], on)
+	case "setRating":
+		rating, err := strconv.Atoi(q.Get("rating"))
+		id := q.Get("id")
+		if err != nil || rating < 0 || rating > 5 || id == "" {
+			return
+		}
+		for _, kind := range []string{"song", "album", "artist"} {
+			_ = s.store.SetRating(ctx, u.ID, kind, id, rating)
+		}
+		s.liveRatings(u.ID, "song", []string{id}, rating)
+	case "createPlaylist":
+		if id := q.Get("playlistId"); id != "" {
+			s.livePlaylists(u.ID, "updated", []string{id}, 0)
+		} else {
+			s.livePlaylists(u.ID, "created", nil, 0)
+		}
+	case "updatePlaylist":
+		s.livePlaylists(u.ID, "updated", nz(q["playlistId"]), 0)
+	case "deletePlaylist":
+		// a smart playlist's rules stay: its next refresh makes the playlist again
+		s.livePlaylists(u.ID, "deleted", nz(q["id"]), 0)
+	}
 }
 
 // ---- Settings → Phone & car apps ----

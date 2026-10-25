@@ -10,9 +10,10 @@ import { Select } from '../components/Select'
 import { AlbumCard, ArtistCard, SongTable, startRadio } from '../components/music'
 import { useCrumb, shuffleLibrary } from '../components/Layout'
 import { Empty, Loading, Segmented, Spinner, errMsg, useToast } from '../components/ui'
+import { isLibraryChange, useLiveRefresh, type LiveEvent } from '../lib/live'
 
 /** Pages through a list as the person scrolls. */
-export function usePaged<T>(fetchPage: (offset: number) => Promise<{ items: T[]; total: number }>, key: string) {
+export function usePaged<T>(fetchPage: (offset: number) => Promise<{ items: T[]; total: number }>, key: string, live?: (e: LiveEvent) => boolean) {
   const [items, setItems] = useState<T[] | null>(null)
   const [total, setTotal] = useState(0)
   const [busy, setBusy] = useState(false)
@@ -39,6 +40,25 @@ export function usePaged<T>(fetchPage: (offset: number) => Promise<{ items: T[];
     io.observe(el)
     return () => io.disconnect()
   }, [more, items])
+  // changed elsewhere (a star in another tab or app, a refreshed index): fetch what is shown
+  // again in place, without a spinner or losing the scroll position
+  const shown = useRef(items)
+  shown.current = items
+  useLiveRefresh(e => !!live?.(e), async () => {
+    if (!live || !shown.current) return
+    const g = gen.current
+    const want = Math.max(1, shown.current.length)
+    let all: T[] = []
+    let tot = 0
+    while (all.length < want && all.length < 2000) {
+      const r = await fetchRef.current(all.length).catch(() => null)
+      if (!r || g !== gen.current) return
+      tot = r.total
+      all = all.concat(r.items)
+      if (!r.items.length || all.length >= r.total) break
+    }
+    if (g === gen.current) { setItems(all); setTotal(tot) }
+  }, 500)
   return { items, total, busy, error, sentinel }
 }
 
@@ -61,7 +81,7 @@ export function Albums() {
   const [seed] = useState(() => Math.floor(Math.random() * 100000))
   const set = (k: string, v: string) => { const n = new URLSearchParams(sp); if (v) n.set(k, v); else n.delete(k); setSp(n, { replace: true }) }
   const q = `sort=${sort}&genre=${encodeURIComponent(genre)}&decade=${decade || ''}&starred=${starred ? 1 : ''}&unplayed=${unplayed ? 1 : ''}&seed=${seed}`
-  const { items, total, busy, error, sentinel } = usePaged<Album>(off => api.get<{ albums: Album[]; total: number }>(`${V1}/albums?${q}&limit=60&offset=${off}`).then(r => ({ items: r.albums, total: r.total })), q)
+  const { items, total, busy, error, sentinel } = usePaged<Album>(off => api.get<{ albums: Album[]; total: number }>(`${V1}/albums?${q}&limit=60&offset=${off}`).then(r => ({ items: r.albums, total: r.total })), q, isLibraryChange)
   return (
     <div>
       <div className="page-header">
@@ -94,7 +114,7 @@ export function Artists() {
   const all = sp.get('all') === '1'
   const set = (k: string, v: string) => { const n = new URLSearchParams(sp); if (v) n.set(k, v); else n.delete(k); setSp(n, { replace: true }) }
   const q = `sort=${sort}&starred=${starred ? 1 : ''}&all=${all ? 1 : ''}`
-  const { items, total, busy, error, sentinel } = usePaged<Artist>(off => api.get<{ artists: Artist[]; total: number }>(`${V1}/artists?${q}&limit=90&offset=${off}`).then(r => ({ items: r.artists, total: r.total })), q)
+  const { items, total, busy, error, sentinel } = usePaged<Artist>(off => api.get<{ artists: Artist[]; total: number }>(`${V1}/artists?${q}&limit=90&offset=${off}`).then(r => ({ items: r.artists, total: r.total })), q, isLibraryChange)
   return (
     <div>
       <div className="page-header"><div><h1>Artists</h1><div className="sub">{items ? `${total.toLocaleString()} artists` : ' '}</div></div></div>
@@ -120,7 +140,7 @@ export function Songs({ loved = false }: { loved?: boolean }) {
   const lossless = sp.get('lossless') === '1'
   const set = (k: string, v: string) => { const n = new URLSearchParams(sp); if (v) n.set(k, v); else n.delete(k); setSp(n, { replace: true }) }
   const q = `sort=${sort}&genre=${encodeURIComponent(genre)}&starred=${loved ? 1 : ''}&lossless=${lossless ? 1 : ''}`
-  const { items, total, busy, error, sentinel } = usePaged<Song>(off => api.get<{ songs: Song[]; total: number }>(`${V1}/songs?${q}&limit=200&offset=${off}`).then(r => ({ items: r.songs, total: r.total })), q)
+  const { items, total, busy, error, sentinel } = usePaged<Song>(off => api.get<{ songs: Song[]; total: number }>(`${V1}/songs?${q}&limit=200&offset=${off}`).then(r => ({ items: r.songs, total: r.total })), q, isLibraryChange)
   const playAll = async (shuffle: boolean) => {
     try {
       if (!loved && !genre && !lossless) return shuffleLibrary()
@@ -188,7 +208,7 @@ export function GenrePage() {
   const { toast } = useToast()
   useCrumb(genre)
   const q = `genre=${encodeURIComponent(genre)}`
-  const { items, total, busy, sentinel } = usePaged<Album>(off => api.get<{ albums: Album[]; total: number }>(`${V1}/albums?${q}&sort=plays&limit=60&offset=${off}`).then(r => ({ items: r.albums, total: r.total })), q)
+  const { items, total, busy, sentinel } = usePaged<Album>(off => api.get<{ albums: Album[]; total: number }>(`${V1}/albums?${q}&sort=plays&limit=60&offset=${off}`).then(r => ({ items: r.albums, total: r.total })), q, isLibraryChange)
   const shuffle = () => api.get<{ songs: Song[] }>(`${V1}/shuffle?${q}`).then(r => player.playSongs(r.songs, 0, { kind: 'genre', name: genre, link: `/genres/${encodeURIComponent(genre)}` })).catch(e => toast(errMsg(e), 'err'))
   return (
     <div>

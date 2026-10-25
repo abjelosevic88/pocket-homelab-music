@@ -421,6 +421,7 @@ func (s *Server) startLyricsJob(trigger string, pass func(ctx context.Context, t
 			s.lyr.mu.Lock()
 			s.lyr.running, s.lyr.cancel = false, nil
 			s.lyr.mu.Unlock()
+			s.liveLyricsJob("run", "idle", 0, 0) // the run's row says how it ended
 		}()
 		s.runLyrics(ctx, id, trigger, pass)
 	}()
@@ -440,7 +441,11 @@ func (s *Server) runLyrics(ctx context.Context, id int64, trigger string, pass f
 	t := &lyricsTally{}
 	t.State = "running"
 	s.saveLyricsRun(id, t)
-	err := pass(ctx, t, func() { s.saveLyricsRun(id, t) })
+	s.liveLyricsJob("run", t.State, 0, 0)
+	err := pass(ctx, t, func() {
+		s.saveLyricsRun(id, t)
+		s.liveLyricsJob("run", t.State, t.Checked, t.Total)
+	})
 	switch {
 	case errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded):
 		t.State, t.Note = "stopped", "stopped before the end; the next run carries on"

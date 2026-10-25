@@ -101,17 +101,24 @@ func (s *Server) refreshStars(ctx context.Context, uid int64, mc *musicConn) {
 	if err != nil {
 		return
 	}
+	changed := false
 	m := func(kind string, n int, get func(int) (string, string)) {
 		set := make(map[string]string, n)
 		for i := 0; i < n; i++ {
 			id, at := get(i)
 			set[id] = at
 		}
-		_ = s.store.ApplyStarred(ctx, uid, kind, set)
+		if ch, err := s.store.ApplyStarred(ctx, uid, kind, set); err == nil && ch {
+			changed = true
+		}
 	}
 	m("song", len(songs), func(i int) (string, string) { return songs[i].ID, songs[i].Starred })
 	m("album", len(albums), func(i int) (string, string) { return albums[i].ID, albums[i].Starred })
 	m("artist", len(artists), func(i int) (string, string) { return artists[i].ID, artists[i].Starred })
+	if changed {
+		// starred in an app that talks to the music server directly
+		s.hub.send(uid, "stars", map[string]any{"refreshed": true})
+	}
 }
 
 func (s *Server) rebuildIndex(ctx context.Context, u *store.User, mc *musicConn, scan *subsonic.ScanStatus) error {

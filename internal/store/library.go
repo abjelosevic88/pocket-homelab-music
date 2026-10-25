@@ -719,27 +719,53 @@ func (s *Store) SetRating(ctx context.Context, uid int64, kind, id string, ratin
 	return err
 }
 
-// ApplyStarred makes the index's stars match the server's (stars change without a scan).
-func (s *Store) ApplyStarred(ctx context.Context, uid int64, kind string, starred map[string]string) error {
+// ApplyStarred makes the index's stars match the server's (stars change
+// without a scan) and reports whether which items are starred changed.
+func (s *Store) ApplyStarred(ctx context.Context, uid int64, kind string, starred map[string]string) (bool, error) {
 	table := map[string]string{"song": "songs", "album": "albums", "artist": "artists"}[kind]
 	if table == "" {
-		return ErrNotFound
+		return false, ErrNotFound
 	}
 	tx, err := s.DB.BeginTx(ctx, nil)
 	if err != nil {
-		return err
+		return false, err
 	}
-	if _, err := tx.ExecContext(ctx, `UPDATE `+table+` SET starred_at = '' WHERE user_id = ? AND starred_at <> ''`, uid); err != nil {
+	before := map[string]bool{}
+	rows, err := tx.QueryContext(ctx, `SELECT id FROM `+table+` WHERE user_id = ? AND starred_at <> ''`, uid)
+	if err != nil {
 		_ = tx.Rollback()
-		return err
+		return false, err
 	}
-	for id, at := range starred {
-		if _, err := tx.ExecContext(ctx, `UPDATE `+table+` SET starred_at = ? WHERE user_id = ? AND id = ?`, at, uid, id); err != nil {
-			_ = tx.Rollback()
-			return err
+	for rows.Next() {
+		var id string
+		if rows.Scan(&id) == nil {
+			before[id] = true
 		}
 	}
-	return tx.Commit()
+	rows.Close()
+	if _, err := tx.ExecContext(ctx, `UPDATE `+table+` SET starred_at = '' WHERE user_id = ? AND starred_at <> ''`, uid); err != nil {
+		_ = tx.Rollback()
+		return false, err
+	}
+	after := 0
+	changed := false
+	for id, at := range starred {
+		res, err := tx.ExecContext(ctx, `UPDATE `+table+` SET starred_at = ? WHERE user_id = ? AND id = ?`, at, uid, id)
+		if err != nil {
+			_ = tx.Rollback()
+			return false, err
+		}
+		if n, _ := res.RowsAffected(); n > 0 {
+			after++
+			if !before[id] {
+				changed = true
+			}
+		}
+	}
+	if after != len(before) {
+		changed = true
+	}
+	return changed, tx.Commit()
 }
 
 // LibraryTotals counts what's in the person's index.

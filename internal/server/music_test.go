@@ -120,7 +120,7 @@ func (f *fakeSubsonic) serve(w http.ResponseWriter, r *http.Request) {
 		}
 		f.playlists[id] = q["songId"]
 		reply(map[string]any{"playlist": map[string]any{"id": id, "name": q.Get("name"), "owner": user}})
-	case "updatePlaylist", "startScan":
+	case "updatePlaylist", "startScan", "star", "unstar", "setRating":
 		reply(map[string]any{})
 	case "getPlaylist":
 		if ids, ok := f.playlists[q.Get("id")]; ok && f.owners[q.Get("id")] == user {

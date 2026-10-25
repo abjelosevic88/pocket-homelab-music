@@ -12,9 +12,11 @@ import { Select } from '../components/Select'
 import { Collage, Cover, HeroActions, MenuTrigger, PlaylistCard, SongTable, useCoverColor } from '../components/music'
 import { announceChange, openCreate, useCrumb } from '../components/Layout'
 import { Confirm, Empty, Field, Loading, Modal, Segmented, Spinner, errMsg, useAsync, useDebounce, useToast } from '../components/ui'
+import { touches, useLiveRefresh } from '../lib/live'
 
 export function Playlists() {
-  const { data, error } = useAsync(() => api.get<PlaylistT[]>(`${V1}/playlists`), [])
+  const { data, error, reload } = useAsync(() => api.get<PlaylistT[]>(`${V1}/playlists`), [])
+  useLiveRefresh(ev => ev.type === 'playlists', reload)
   if (error) return <div className="callout danger"><Icon name="alert" size={15} />{error}</div>
   if (!data) return <Loading />
   const smart = data.filter(p => p.smart_id)
@@ -44,6 +46,8 @@ export function Playlist() {
   const navigate = useNavigate()
   const { toast } = useToast()
   const { data, error, reload } = useAsync(() => api.get<PlaylistResp>(`${V1}/playlists/${id}`), [id])
+  // changed in another tab, a phone app or by a smart refresh; stars on its songs too
+  useLiveRefresh(ev => (ev.type === 'playlists' && (ev.data.ids.length === 0 || ev.data.ids.includes(id))) || touches(ev, (data?.songs || []).map(s => s.id)), reload)
   const [edit, setEdit] = useState(false)
   const [del, setDel] = useState(false)
   const [refreshing, setRefreshing] = useState(false)

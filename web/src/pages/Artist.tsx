@@ -8,13 +8,17 @@ import { Icon } from '../components/icons'
 import { AlbumCard, ArtistCard, Cover, Shelf, SongTable, StarButton, startRadio, useCoverColor } from '../components/music'
 import { useCrumb } from '../components/Layout'
 import { Loading, Segmented, Spinner, errMsg, useAsync, useToast } from '../components/ui'
+import { touches, useLiveRefresh } from '../lib/live'
 
 interface ArtistResp { artist: ArtistT; albums: Album[]; appears_on: Album[]; top_songs: Song[]; song_count: number; biography?: string; lastfm_url?: string; similar?: ArtistT[] }
 
 export default function Artist() {
   const { id = '' } = useParams()
   const { toast } = useToast()
-  const { data, error } = useAsync(() => api.get<ArtistResp>(`${V1}/artists/${id}?info=1`), [id])
+  const { data, error, setData } = useAsync(() => api.get<ArtistResp>(`${V1}/artists/${id}?info=1`), [id])
+  // starred or rated elsewhere, or the index refreshed: the artist again, keeping the biography already here
+  useLiveRefresh(ev => touches(ev, [id, ...(data?.top_songs || []).map(s => s.id), ...(data?.albums || []).map(a => a.id)]),
+    () => api.get<ArtistResp>(`${V1}/artists/${id}`).then(r => setData(d => d ? { ...r, biography: d.biography, lastfm_url: d.lastfm_url, similar: d.similar } : r)).catch(() => {}))
   const [allTop, setAllTop] = useState(false)
   const [bioOpen, setBioOpen] = useState(false)
   const color = useCoverColor(artistImage(id, 64))

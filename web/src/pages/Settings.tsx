@@ -4,7 +4,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import { api, V1 } from '../lib/api'
 import { useApp } from '../lib/app-context'
 import { deviceName } from '../lib/music'
-import { onLive } from '../lib/live'
+import { onLive, useLiveRefresh, usePollWhileDown } from '../lib/live'
 import type { APIToken, Connection, ImportRun, LyricsLibrary, Settings as SettingsT, SubsonicLogin, User } from '../lib/types'
 import { DATE_FORMATS, TIME_FORMATS, fmtBytes, fmtDateTime, type DateFormat, type TimeFormat } from '../lib/format'
 import { Avatar, Confirm, CopyField, CoreHint, Field, Loading, Modal, Segmented, SettingRow, Spinner, Switch, Tabs, errMsg, useAsync, useIsMobile, useToast } from '../components/ui'
@@ -260,15 +260,14 @@ function LyricsLibrarySection() {
   const [info, setInfo] = useState<LyricsLibrary | null>(null)
   const load = () => api.get<LyricsLibrary>(`${V1}/lyrics-library`).then(setInfo).catch(e => toast(errMsg(e), 'err'))
   useEffect(() => { load() }, []) // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => {
-    if (!info?.running) return
-    const t = setInterval(load, 3000)
-    return () => clearInterval(t)
-  }, [info?.running]) // eslint-disable-line react-hooks/exhaustive-deps
+  // a run's progress and end arrive live; a slow poll only while the live stream is down
+  const quiet = () => api.get<LyricsLibrary>(`${V1}/lyrics-library`).then(setInfo).catch(() => {})
+  useLiveRefresh(ev => ev.type === 'lyrics_job' && ev.data.kind === 'run', quiet, 150)
+  usePollWhileDown(quiet, 5000, !!info?.running)
   if (!f || !info) return <Loading />
   const run = info.runs[0]
   const start = async () => { try { setInfo(await api.post<LyricsLibrary>(`${V1}/lyrics-library/run`)); toast('Looking for lyrics') } catch (e) { toast(errMsg(e), 'err') } }
-  const stop = async () => { await api.post(`${V1}/lyrics-library/stop`).catch(() => {}); setTimeout(load, 600) }
+  const stop = async () => { await api.post(`${V1}/lyrics-library/stop`).catch(() => {}) }
   return (
     <Section title="Lyrics library" icon="database" actions={<span className={`badge ${!info.writable ? 'warn' : f.lyrics_writer ? 'ok' : ''}`}>{!info.writable ? 'not available' : info.running ? 'running' : f.lyrics_writer ? `nightly at ${String(f.lyrics_hour).padStart(2, '0')}:00` : 'off'}</span>}
       sub={<>For the whole box: every song without lyrics is looked up at LRCLIB and synced lyrics are saved as a .lrc file next to it — so Navidrome, phone apps and the car show them too, offline. Songs LRCLIB doesn't know yet are asked again later, never every night. Browse, search and edit them all on the <Link to="/lyrics">Lyrics</Link> page.</>}>
@@ -441,12 +440,8 @@ function HistoryImport() {
   const { toast } = useToast()
   const { run, status } = useTester()
   const { data, reload } = useAsync(() => api.get<ImportRun[]>(`${V1}/imports`), [])
-  useEffect(() => onLive(ev => { if (ev.type === 'import') reload() }), [reload])
-  useEffect(() => {
-    if (!data?.some(i => i.state === 'running')) return
-    const t = setInterval(reload, 3000)
-    return () => clearInterval(t)
-  }, [data, reload])
+  useLiveRefresh(ev => ev.type === 'import', reload, 150)
+  usePollWhileDown(reload, 5000, !!data?.some(i => i.state === 'running'))
   if (!f) return <Loading />
   const start = async (source: string, body: Record<string, string>) => {
     try { await api.post(`${V1}/imports`, { source, ...body }); toast('Import started'); reload() } catch (e) { toast(errMsg(e), 'err') }

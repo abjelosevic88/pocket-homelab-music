@@ -8,6 +8,7 @@ import { Icon } from '../components/icons'
 import { Cover } from '../components/music'
 import { BarList, Columns, type Point } from '../components/charts'
 import { Empty, Loading, Segmented, useAsync } from '../components/ui'
+import { useLiveRefresh } from '../lib/live'
 import { Select } from '../components/Select'
 
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
@@ -32,7 +33,8 @@ function Tile({ label, value, d, sub }: { label: string; value: string; d?: numb
 export default function Stats() {
   const [sp, setSp] = useSearchParams()
   const period = sp.get('period') || 'month'
-  const { data: s, error, loading } = useAsync(() => api.get<StatsT>(`${V1}/stats?period=${period}&tz=${tz()}&limit=10`), [period])
+  const { data: s, error, loading, reload } = useAsync(() => api.get<StatsT>(`${V1}/stats?period=${period}&tz=${tz()}&limit=10`), [period])
+  useLiveRefresh(ev => ev.type === 'listens', reload, 800)
   const setPeriod = (p: string) => { const n = new URLSearchParams(sp); n.set('period', p); setSp(n, { replace: true }) }
   const timeline = useMemo<Point[]>(() => {
     if (!s) return []
@@ -139,7 +141,9 @@ function TopList({ title, items, kind }: { title: string; items: Top[]; kind: 'a
 export function Recap() {
   const [sp] = useSearchParams()
   const period = sp.get('period') || String(new Date().getFullYear())
-  const { data: r, error } = useAsync(() => api.get<{ period: { label: string }; totals: StatsT['totals']; artists: Top[]; songs: Top[]; albums: Top[]; genres: Top[]; peak_hour: string; peak_month: string; biggest_day: { key: string; seconds: number; plays: number }; streak: { longest: number } }>(`${V1}/recap?period=${period}&tz=${tz()}`), [period])
+  const recap = useAsync(() => api.get<{ period: { label: string }; totals: StatsT['totals']; artists: Top[]; songs: Top[]; albums: Top[]; genres: Top[]; peak_hour: string; peak_month: string; biggest_day: { key: string; seconds: number; plays: number }; streak: { longest: number } }>(`${V1}/recap?period=${period}&tz=${tz()}`), [period])
+  const { data: r, error } = recap
+  useLiveRefresh(ev => ev.type === 'listens', recap.reload, 800)
   if (error) return <div className="callout danger"><Icon name="alert" size={15} />{error}</div>
   if (!r) return <Loading />
   const top = r.artists[0]
