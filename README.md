@@ -1,6 +1,6 @@
 <p align="center"><img src="web/public/favicon.svg" width="72" alt=""></p>
 <h1 align="center">Pocket Music</h1>
-<p align="center">Your music library, played anywhere: a player for the whole household on top of Navidrome, with your listening history and stats, daily mixes and radio, smart playlists every Subsonic app sees, synced lyrics, “make me a mix” from a sentence, and the albums you’re missing fetched through Lidarr.<br>One Go binary, one SQLite file, one volume.</p>
+<p align="center">Your music library, played anywhere: a player for the whole household on top of Navidrome, with your listening history and stats, daily mixes and radio, smart playlists every Subsonic app sees, synced lyrics, “make me a mix” from a sentence, the albums you’re missing fetched through Lidarr, and YouTube links saved into the library as proper albums.<br>One Go binary, one SQLite file, one volume.</p>
 <p align="center">
   <a href="https://github.com/abjelosevic88/pocket-homelab-music/actions"><img src="https://github.com/abjelosevic88/pocket-homelab-music/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI"></a>
   <a href="https://github.com/abjelosevic88/pocket-homelab-music/pkgs/container/pocket-homelab-music"><img src="https://img.shields.io/badge/ghcr.io-amd64%20%7C%20arm64%20%7C%20armv7-blue" alt="image"></a>
@@ -94,6 +94,16 @@ and play counts show up there too. More in [docs/design.md](docs/design.md).
 - Artist pages show the whole discography with the albums you don’t have; *Get it* asks Lidarr.
 - New releases by your artists, and a search for any album on MusicBrainz.
 - Requests are followed; a push (Apprise, ntfy, webhook) tells you when the album has arrived.
+
+**From a link** (admins, needs `MUSIC_DIR`)
+- *New → Add from a link*: paste a YouTube video or playlist (Bandcamp, SoundCloud and the other yt-dlp sites work
+  too). Artist, album, year and track titles are guessed — YouTube Music’s own fields when there are any, otherwise
+  the channel and a cleaned-up title — and you can change them before it starts.
+- The best audio is kept as it is (opus or AAC, no re-encoding) and filed like the rest of the library:
+  `<Artist>/<YYYY - Album>/NN. Title.ext`, tags, a square `cover.jpg`, the picture in the file, the channel’s picture
+  as `artist.jpg` for a new artist. Existing artist and album folders are reused (any capitalisation; a track joins an
+  album with the next number). An *Ambient* folder option files long ambient videos as one album each.
+- The music server scans when it’s done; the downloads are listed on Requests.
 
 **Part of the Pocket apps** (with [Pocket Core](https://github.com/abjelosevic88/pocket-homelab-core))
 - One sign-in; each person’s Navidrome and Lidarr login comes from Core — nothing to paste.

@@ -75,7 +75,8 @@ on *Re-read folder*; only new and changed files are read again.
 
 | Variable | Default | What it does |
 |---|---|---|
-| `MUSIC_DIR` | – | Where the music folder is mounted in this container (e.g. `/music`, mounted `rw`). Without it the lyrics library is off; "Save to library" in Now Playing needs it too. |
+| `MUSIC_DIR` | – | Where the music folder is mounted in this container (e.g. `/music`, mounted `rw`). Without it the lyrics library is off; "Save to library" in Now Playing and "Add from a link" need it too. |
+| `YTDLP` | – | A yt-dlp to use for "Add from a link". Empty: the app keeps its own copy in `DATA_DIR/bin` (started from the one in the image) and updates it daily. The image also has ffmpeg, python3 + mutagen and node, which the downloads need. |
 
 Download hooks can fetch lyrics for a new album at once: `POST /api/v1/lyrics-library/run {"folder":"Artist/2024 - Album"}`
 with an admin's token (the folder is relative to the music folder). Moving from a script that kept its own list of

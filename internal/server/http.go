@@ -144,6 +144,12 @@ func (s *Server) Router() http.Handler {
 				r.Get("/requests", s.handleRequests)
 				r.Post("/requests", s.handleRequestAlbum)
 				r.Delete("/requests/{id}", s.handleDeleteRequest)
+				r.Get("/link-downloads", s.handleLinkDownloads)
+				r.Post("/link-downloads", s.handleLinkCreate)
+				r.Post("/link-downloads/inspect", s.handleLinkInspect)
+				r.Get("/link-downloads/place", s.handleLinkPlace)
+				r.Post("/link-downloads/clear", s.handleLinkClear)
+				r.Delete("/link-downloads/{id}", s.handleLinkDelete)
 
 				r.Get("/ai/status", s.handleAIStatus)
 				r.Get("/ai/models", s.handleAIModels)

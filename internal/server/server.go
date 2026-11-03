@@ -18,6 +18,7 @@ import (
 	core "github.com/abjelosevic88/pocket-homelab-core/sdk"
 	"github.com/abjelosevic88/pocket-homelab-music/internal/config"
 	"github.com/abjelosevic88/pocket-homelab-music/internal/store"
+	"github.com/abjelosevic88/pocket-homelab-music/internal/ytdlp"
 )
 
 // Version is injected at build time.
@@ -53,6 +54,9 @@ type Server struct {
 
 	lyr lyricsJob      // the lyrics library run
 	lix lyricsIndexJob // the lyrics index refresh
+
+	yt  *ytdlp.Runner // "From a link" downloads
+	lnk linkState
 }
 
 // New creates a server.
@@ -60,7 +64,8 @@ func New(cfg *config.Config, st *store.Store, log *slog.Logger, webFS fs.FS) *Se
 	return &Server{cfg: cfg, store: st, log: log, webFS: webFS, started: time.Now(), oidc: &oidcProvider{},
 		http:    &http.Client{Timeout: 30 * time.Second},
 		core:    core.New(cfg.CoreURL, core.Options{DB: st.DB, TokenFile: cfg.DataDir + "/core.token", UserAgent: cfg.UserAgent}),
-		syncing: map[int64]bool{}, hub: newHub(), jobs: map[string]bool{}}
+		syncing: map[int64]bool{}, hub: newHub(), jobs: map[string]bool{},
+		yt: ytdlp.New(cfg.YTDLP, cfg.DataDir, cfg.UserAgent), lnk: linkState{wake: make(chan struct{}, 1)}}
 }
 
 // Bootstrap seeds the first admin (if configured), the owner's connections
@@ -103,6 +108,9 @@ func (s *Server) Bootstrap(ctx context.Context) error {
 	}
 	_ = s.store.PurgeSessions(ctx)
 	go s.janitor(ctx)
+	if s.cfg.MusicDir != "" {
+		go s.linkWorker(ctx)
+	}
 	if s.core.Configured() {
 		go s.coreLoop(ctx)
 	}
@@ -215,6 +223,7 @@ func (s *Server) janitor(ctx context.Context) {
 			s.scheduledLyrics(ctx)
 			s.scheduledLyricsIndex(ctx)
 			s.publishMixesDaily(ctx)
+			s.updateYTDLP(ctx)
 		}
 	}
 }

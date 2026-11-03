@@ -3,6 +3,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import { api } from '../lib/api'
+import { useApp } from '../lib/app-context'
 import { V1, albumCover, artistImage, clock, coverURL } from '../lib/music'
 import { player } from '../lib/player-react'
 import type { Album, Artist, Playlist, Song } from '../lib/types'
@@ -15,6 +16,7 @@ interface Results { artists: Artist[]; albums: Album[]; songs: Song[] }
 
 export function CommandPalette({ onClose, playlists, onCreate, onShortcuts }: { onClose: () => void; playlists: Playlist[]; onCreate: (k: CreateKind) => void; onShortcuts: () => void }) {
   const navigate = useNavigate()
+  const admin = useApp().user?.role === 'admin'
   const [q, setQ] = useState('')
   const dq = useDebounce(q, 120)
   const [hi, setHi] = useState(0)
@@ -34,6 +36,7 @@ export function CommandPalette({ onClose, playlists, onCreate, onShortcuts }: { 
     { key: 'playlist', group: 'Commands', icon: <Icon name="playlist" size={16} />, label: 'New playlist', run: () => onCreate('playlist') },
     { key: 'smart', group: 'Commands', icon: <Icon name="zap" size={16} />, label: 'New smart playlist', run: () => onCreate('smart') },
     { key: 'request', group: 'Commands', icon: <Icon name="download" size={16} />, label: 'Request an album', run: () => onCreate('request') },
+    ...(admin ? [{ key: 'link', group: 'Commands', icon: <Icon name="link" size={16} />, label: 'Add from a link (YouTube…)', run: () => onCreate('link') }] : []),
     { key: 'home', group: 'Go to', icon: <Icon name="home" size={16} />, label: 'Home', hint: 'H', run: () => navigate('/') },
     { key: 'albums', group: 'Go to', icon: <Icon name="album" size={16} />, label: 'Albums', hint: 'A', run: () => navigate('/albums') },
     { key: 'artists', group: 'Go to', icon: <Icon name="mic" size={16} />, label: 'Artists', hint: 'I', run: () => navigate('/artists') },
@@ -48,7 +51,7 @@ export function CommandPalette({ onClose, playlists, onCreate, onShortcuts }: { 
     { key: 'settings', group: 'Go to', icon: <Icon name="settings" size={16} />, label: 'Settings', hint: ',', run: () => navigate('/settings') },
     { key: 'library', group: 'Go to', icon: <Icon name="server" size={16} />, label: 'Settings: library connection', run: () => navigate('/settings/library') },
     { key: 'keys', group: 'Go to', icon: <Icon name="keyboard" size={16} />, label: 'Keyboard shortcuts', hint: '?', run: onShortcuts },
-  ], [navigate, onCreate, onShortcuts])
+  ], [navigate, onCreate, onShortcuts, admin])
 
   const rows = useMemo<Row[]>(() => {
     const n = q.trim().toLowerCase()

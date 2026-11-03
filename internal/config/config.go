@@ -69,6 +69,8 @@ type Config struct {
 	// Where the music library is mounted read-write (the same folder the music
 	// server reads): the lyrics library writes .lrc files next to the songs.
 	MusicDir string
+	// A yt-dlp to use for "From a link" downloads ("" = the app keeps its own copy, updated daily).
+	YTDLP string
 	// How often each person's library index is checked for a new scan.
 	SyncEvery time.Duration
 
@@ -174,6 +176,7 @@ func Load() (*Config, error) {
 		OpenAIBaseURL: strings.TrimRight(env("OPENAI_BASE_URL", ""), "/"),
 		LyricsURL:     strings.TrimRight(env("LYRICS_URL", "https://lrclib.net"), "/"),
 		MusicDir:      strings.TrimRight(env("MUSIC_DIR", ""), "/"),
+		YTDLP:         env("YTDLP", ""),
 		SyncEvery:     envDuration("SYNC_EVERY", 10*time.Minute),
 
 		UserAgent: env("USER_AGENT", "PocketMusic/1.0 (+https://github.com/abjelosevic88/pocket-homelab-music)"),

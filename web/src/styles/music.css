@@ -571,3 +571,15 @@ a.top-row:hover { background: var(--hover); }
   .lyr-row { gap: 10px; padding: 6px 4px; }
   .lyr-none { white-space: normal; text-align: right; max-width: 92px; line-height: 1.3; }
 }
+
+/* Add from a link */
+.link-source { display: flex; gap: 14px; align-items: center; padding: 10px; border-radius: 12px; background: var(--surface-2); }
+.link-source-title { font-weight: 600; line-height: 1.35; }
+.link-tracks { display: grid; gap: 6px; max-height: 260px; overflow: auto; padding-right: 4px; }
+.link-track { display: flex; align-items: center; gap: 8px; }
+.link-track input { flex: 1; min-width: 0; }
+.link-track-no { width: 22px; text-align: right; font-variant-numeric: tabular-nums; }
+.link-path { display: flex; gap: 6px; align-items: flex-start; word-break: break-word; }
+.link-path .icon { margin-top: 2px; flex: none; }
+.text-danger { color: var(--danger); }
+@media (max-width: 560px) { .link-source { align-items: flex-start; } }

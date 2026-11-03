@@ -29,7 +29,7 @@ const DISCOVER: NavItem[] = [
 ]
 
 export function Sidebar({ onCreate, onNavigate, playlists, sync }: { onCreate: (k: CreateKind) => void; onNavigate: () => void; playlists: Playlist[]; sync: { state: string; progress?: number } | null }) {
-  const { status, settings } = useApp()
+  const { status, settings, user } = useApp()
   const [menu, setMenu] = useState<Anchor | null>(null)
   const title = settings?.title || status?.title || 'Pocket Music'
   const mine = playlists.filter(p => p.mine)
@@ -44,7 +44,7 @@ export function Sidebar({ onCreate, onNavigate, playlists, sync }: { onCreate: (
       <button type="button" className="btn primary create-btn" aria-haspopup="menu" aria-expanded={!!menu} onClick={e => setMenu(menu ? null : rectOf(e.currentTarget))}>
         <Icon name="plus" size={17} strokeWidth={2.2} />New<Icon name="chevron-down" size={15} className="create-caret" />
       </button>
-      {menu && <Menu anchor={menu} items={createItems(onCreate)} onClose={() => setMenu(null)} width={248} />}
+      {menu && <Menu anchor={menu} items={createItems(onCreate, user?.role === 'admin')} onClose={() => setMenu(null)} width={248} />}
 
       <nav className="sb-nav" aria-label="Sections">
         <NavLink to="/" end onClick={onNavigate} className={({ isActive }) => `sb-nav-item ${isActive ? 'active' : ''}`}><Icon name="home" size={16} />Home</NavLink>

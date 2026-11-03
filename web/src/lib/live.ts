@@ -24,6 +24,7 @@ export type LiveEvent =
   | { type: 'requests'; data: { action: 'added' | 'updated' | 'deleted'; ids: number[] } }
   | { type: 'lyrics'; data: { file_ids: number[]; many?: number } }
   | { type: 'lyrics_job'; data: { kind: 'run' | 'index'; state: string; done: number; total: number } }
+  | { type: 'link_downloads'; data: { id: number; state: string; detail: string } }
   | { type: 'import'; data: { id: number; state?: string; seen: number; imported: number } }
 
 export type LiveType = LiveEvent['type']

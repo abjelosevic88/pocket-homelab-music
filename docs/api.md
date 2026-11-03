@@ -87,6 +87,11 @@ that needs the server.
 | `GET /lidarr/search?q=` | Artists and albums from MusicBrainz (through Lidarr), marked when already in the library |
 | `POST /requests {"lidarr_id"}` or `{"foreign_id","artist_foreign_id","artist","title"}` | Monitor and search an album (adding its artist, monitoring nothing else, when needed) |
 | `GET /requests` · `DELETE /requests/{id}` | Your requests: requested, downloading, arrived, failed |
+| `GET /link-downloads` | Admins: downloads from links (`items`), whether they work here (`ready`, `detail`) and the folders (`roots`: ambient, music) |
+| `POST /link-downloads/inspect {"url"}` | Admins: what a link holds and how it would be filed (`artist`, `album`, `year`, `tracks`, `before` = folders it went into already) |
+| `GET /link-downloads/place?root&artist&album&year` | Admins: the album folder it lands in, existing artist and album folders, the next track number |
+| `POST /link-downloads {"url","root","artist","album","year","genre","tracks":[{"url","title"}]}` | Admins: queue a download (one at a time; the server scans when it's done) |
+| `DELETE /link-downloads/{id}` · `POST /link-downloads/clear` | Stop or forget one (files already downloaded stay) · forget the finished ones |
 | `GET /releases` | Lidarr's calendar for the last 45 and next 120 days |
 
 ## Live updates
@@ -107,6 +112,7 @@ about; lyrics are files on the box, the same for everyone, so their events go to
 | `ratings` | `{"kind","ids","rating"}` | Rated here or through `/rest` `setRating` |
 | `playlists` | `{"action":"created\|updated\|deleted","ids","smart_id"?}` | A playlist made, changed or deleted (web, `/rest`, smart playlist refresh, daily mixes written back, "make me a mix") |
 | `requests` | `{"action":"added\|updated\|deleted","ids"}` | Album requests; `updated` when Lidarr reports downloading or arrived |
+| `link_downloads` | `{"id","state","detail"}` | A download from a link moved on (progress at most once a second) |
 | `lyrics` | `{"file_ids"}` · `{"file_ids":[],"many":n}` | Lyrics files changed (edited, fetched, deleted, a run), sent together once a second |
 | `lyrics_job` | `{"kind":"run\|index","state","done","total"}` | A lyrics run (admins) or the folder read (everyone): new states at once, progress every two seconds; `idle`/`done`/`error` at the end |
 | `import` | `{"id","state"?,"seen","imported"}` | History import progress |

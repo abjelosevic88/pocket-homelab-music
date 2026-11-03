@@ -13,6 +13,7 @@ import { CommandPalette } from './CommandPalette'
 import { ShortcutsSheet } from './ShortcutsSheet'
 import { PlayerBar, usePlayerKeys } from './PlayerBar'
 import { MakeMixModal, NewPlaylistModal } from './forms'
+import { LinkDownloadModal } from './LinkDownload'
 import { Avatar, type MenuItem, MenuButton, errMsg, modalOpen, useIsMobile, useMediaQuery, useToast } from './ui'
 import { AskButton } from './AskButton'
 
@@ -28,11 +29,11 @@ export function useCrumb(title: string | undefined) {
   useEffect(() => { set(title || ''); return () => set('') }, [title, set])
 }
 
-export type CreateKind = 'mix' | 'playlist' | 'smart' | 'shuffle' | 'request'
+export type CreateKind = 'mix' | 'playlist' | 'smart' | 'shuffle' | 'request' | 'link'
 /** Open a create dialog from anywhere (a page's button). */
 export const openCreate = (k: CreateKind) => window.dispatchEvent(new CustomEvent('pmu:create', { detail: k }))
 
-export function createItems(onCreate: (k: CreateKind) => void): MenuItem[] {
+export function createItems(onCreate: (k: CreateKind) => void, admin: boolean): MenuItem[] {
   return [
     { label: 'Make a mix…', icon: 'sparkles', hint: 'X', onSelect: () => onCreate('mix') },
     { label: 'Shuffle my library', icon: 'shuffle', onSelect: () => onCreate('shuffle') },
@@ -41,6 +42,7 @@ export function createItems(onCreate: (k: CreateKind) => void): MenuItem[] {
     { label: 'New smart playlist', icon: 'zap', onSelect: () => onCreate('smart') },
     'sep',
     { label: 'Request an album', icon: 'download', onSelect: () => onCreate('request') },
+    { label: 'Add from a link…', icon: 'link', onSelect: () => onCreate('link'), disabled: !admin, hint: admin ? undefined : 'admins' },
   ]
 }
 
@@ -155,6 +157,7 @@ export default function Layout() {
         {palette && <CommandPalette onClose={() => setPalette(false)} playlists={playlists} onCreate={create} onShortcuts={() => setShortcuts(true)} />}
         {shortcuts && <ShortcutsSheet onClose={() => setShortcuts(false)} />}
         {modal === 'mix' && <MakeMixModal onClose={() => setModal(null)} />}
+        {modal === 'link' && <LinkDownloadModal onClose={() => setModal(null)} />}
         {modal === 'playlist' && <NewPlaylistModal onClose={() => setModal(null)} onSaved={p => { setModal(null); load(); navigate(`/playlists/${p.id}`) }} />}
       </div>
     </CrumbCtx.Provider>

@@ -9,6 +9,9 @@ import { Icon } from '../components/icons'
 import { Cover } from '../components/music'
 import { Confirm, Empty, Loading, Segmented, Spinner, errMsg, useDebounce, useToast } from '../components/ui'
 import { useLiveRefresh } from '../lib/live'
+import { useApp } from '../lib/app-context'
+import { openCreate } from '../components/Layout'
+import { LinkDownloads } from '../components/LinkDownload'
 
 function LidarrOff({ message }: { message: string }) {
   return (
@@ -71,6 +74,7 @@ interface SearchRes {
 
 export function Requests() {
   const { toast } = useToast()
+  const admin = useApp().user?.role === 'admin'
   const [sp] = useSearchParams()
   const [reqs, setReqs] = useState<Request[] | null>(null)
   const [off, setOff] = useState('')
@@ -95,13 +99,14 @@ export function Requests() {
       toast(`Lidarr is looking for “${a.title}”`); load()
     } catch (e) { toast(errMsg(e), 'err') } finally { setBusy('') }
   }
-  if (off && !reqs?.length) return <LidarrOff message={off} />
+  if (off && !reqs?.length && !admin) return <LidarrOff message={off} />
   const open = (reqs || []).filter(r => r.state === 'requested' || r.state === 'downloading')
   const done = (reqs || []).filter(r => r.state === 'arrived' || r.state === 'failed')
   return (
     <div>
-      <div className="page-header"><div><h1>Requests</h1><div className="sub">Albums you asked Lidarr for. You get a push when one arrives (Settings → Notifications).</div></div></div>
-      <section className="section">
+      <div className="page-header"><div><h1>Requests</h1><div className="sub">Albums you asked Lidarr for{admin ? ' and downloads from links' : ''}. You get a push when one arrives (Settings → Notifications).</div></div></div>
+      {admin && <LinkDownloads onAdd={() => openCreate('link')} />}
+      {off && !reqs?.length ? <LidarrOff message={off} /> : <section className="section">
         <div className="find-box">
           <Icon name="search" size={18} />
           <input value={q} onChange={e => setQ(e.target.value)} placeholder="Find any album or artist (MusicBrainz, through Lidarr)" autoFocus={sp.get('find') === '1'} />
@@ -121,9 +126,9 @@ export function Requests() {
             {res.artists.length > 0 && <p className="muted small mt-s">Artists: {res.artists.map((a, i) => <span key={a.foreign_id}>{i ? ', ' : ''}{a.library_id ? <Link to={`/artists/${a.library_id}`}>{a.name}</Link> : a.name}</span>)} — search for an album title to request it.</p>}
           </div>
         )}
-      </section>
+      </section>}
       {!reqs && <Loading />}
-      {reqs && reqs.length === 0 && !res && <Empty title="No requests yet" icon="download">Search above, or use “Get it” on an artist’s missing albums.</Empty>}
+      {reqs && reqs.length === 0 && !res && !off && <Empty title="No requests yet" icon="download">Search above, or use “Get it” on an artist’s missing albums.</Empty>}
       {open.length > 0 && <section className="section"><div className="section-head"><h2>Waiting</h2></div><ReqList items={open} onDelete={setDel} /></section>}
       {done.length > 0 && <section className="section"><div className="section-head"><h2>Done</h2></div><ReqList items={done} onDelete={setDel} /></section>}
       {del && <Confirm title={`Forget “${del.album}”?`} message="It disappears from this list. Lidarr keeps the album monitored; unmonitor it there to stop the search." confirmLabel="Forget" onCancel={() => setDel(null)} onConfirm={async () => { await api.del(`${V1}/requests/${del.id}`).catch(() => {}); setDel(null); load() }} />}
