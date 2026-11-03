@@ -65,8 +65,21 @@ export function useDevices() {
 }
 export function startLive() { wireLive(); openLive() }
 
+// Devices taken over here, by the report they had then (id → updated_at). A Subsonic app can't be paused from
+// here, so without this it would still look like it plays — and "Playing on …" stayed up — until its song ended.
+// It counts again as soon as it reports something new (the next song, a pause, a play).
+const TAKEN_KEY = 'pmu-taken-over'
+let takenOver: Record<string, string> = (() => { try { return JSON.parse(localStorage.getItem(TAKEN_KEY) || '{}') } catch { return {} } })()
+function markTakenOver(d: Device) {
+  takenOver = { ...Object.fromEntries(Object.entries(takenOver).filter(([id]) => devices.some(x => x.id === id))), [d.id]: d.updated_at }
+  try { localStorage.setItem(TAKEN_KEY, JSON.stringify(takenOver)) } catch { /* private mode */ }
+  devices = [...devices]
+  devSubs.forEach(f => f())
+}
+
 /** Is a device playing right now? An app counts until its song can have ended; a browser while it reports. */
 export function isLive(d: Device): boolean {
+  if (takenOver[d.id] && takenOver[d.id] === d.updated_at) return false
   if (d.kind === 'app') return !!d.until && Date.now() < Date.parse(d.until)
   return d.active && d.playing
 }
@@ -84,5 +97,6 @@ export const remote = (id: string, action: string, value = 0) => api.post(`${V1}
 export async function takeOver(d: Device) {
   const r = await api.get<{ songs: Song[] }>(`${V1}/devices/${encodeURIComponent(d.id)}/queue`)
   if (d.kind !== 'app') remote(d.id, 'pause') // an app can't be told to stop
+  markTakenOver(d)
   player.takeOver(r.songs, d.queue_index, d.position_ms + (d.playing ? Date.now() - Date.parse(d.updated_at) : 0), d.name)
 }
