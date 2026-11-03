@@ -103,6 +103,7 @@ and play counts show up there too. More in [docs/design.md](docs/design.md).
   `<Artist>/<YYYY - Album>/NN. Title.ext`, tags, a square `cover.jpg`, the picture in the file, the channel’s picture
   as `artist.jpg` for a new artist. Existing artist and album folders are reused (any capitalisation; a track joins an
   album with the next number). An *Ambient* folder option files long ambient videos as one album each.
+- Optionally into a playlist (an existing one or a new one typed in), added once the server has scanned the files.
 - The music server scans when it’s done; the downloads are listed on Requests.
 
 **Part of the Pocket apps** (with [Pocket Core](https://github.com/abjelosevic88/pocket-homelab-core))

@@ -90,7 +90,7 @@ that needs the server.
 | `GET /link-downloads` | Admins: downloads from links (`items`), whether they work here (`ready`, `detail`) and the folders (`roots`: ambient, music) |
 | `POST /link-downloads/inspect {"url"}` | Admins: what a link holds and how it would be filed (`artist`, `album`, `year`, `tracks`, `before` = folders it went into already) |
 | `GET /link-downloads/place?root&artist&album&year` | Admins: the album folder it lands in, existing artist and album folders, the next track number |
-| `POST /link-downloads {"url","root","artist","album","year","genre","tracks":[{"url","title"}]}` | Admins: queue a download (one at a time; the server scans when it's done) |
+| `POST /link-downloads {"url","root","artist","album","year","genre","tracks":[{"url","title"}],"playlist_id","playlist_name"}` | Admins: queue a download (with `playlist_id`, the tracks are added to that playlist after the scan) (one at a time; the server scans when it's done) |
 | `DELETE /link-downloads/{id}` · `POST /link-downloads/clear` | Stop or forget one (files already downloaded stay) · forget the finished ones |
 | `GET /releases` | Lidarr's calendar for the last 45 and next 120 days |
 

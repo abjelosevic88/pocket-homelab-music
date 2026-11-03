@@ -10,11 +10,13 @@ import { useLiveRefresh } from '../lib/live'
 import { Icon } from './icons'
 import { Cover } from './music'
 import { Field, Modal, Segmented, Spinner, errMsg, useDebounce, useToast } from './ui'
+import { Select } from './Select'
+import type { Playlist } from '../lib/types'
 
 export interface LinkTrack { url: string; title: string; number?: number; file?: string; duration?: number }
 export interface LinkDownload {
   id: number; url: string; artist: string; album: string; year: number; genre: string; folder: string; cover_url: string
-  tracks: LinkTrack[]; state: 'queued' | 'downloading' | 'scanning' | 'done' | 'failed'; detail: string; error: string; album_id: string
+  tracks: LinkTrack[]; playlist_id: string; playlist_name: string; state: 'queued' | 'downloading' | 'scanning' | 'done' | 'failed'; detail: string; error: string; album_id: string
   created_at: string; updated_at: string
 }
 interface Root { key: string; label: string; genre: string; exists: boolean }
@@ -26,6 +28,7 @@ interface Suggest {
 interface Place { root: string; folder: string; artist_new: boolean; album_new: boolean; next_track: number; artists: string[]; albums: string[] }
 
 const ROOT_KEY = 'pmu-link-root'
+const PLAYLIST_KEY = 'pmu-link-playlist'
 const looksLikeLink = (s: string) => /^https?:\/\/\S+$/i.test(s.trim())
 
 export function LinkDownloadModal({ onClose }: { onClose: () => void }) {
@@ -43,9 +46,27 @@ export function LinkDownloadModal({ onClose }: { onClose: () => void }) {
   const [tracks, setTracks] = useState<LinkTrack[]>([])
   const [place, setPlace] = useState<Place | null>(null)
   const [busy, setBusy] = useState(false)
+  const [playlists, setPlaylists] = useState<Playlist[]>([])
+  const [playlist, setPlaylist] = useState('')
   const read = useRef(0)
 
   useEffect(() => { api.get<LinkList>(`${V1}/link-downloads`).then(setInfo).catch(e => setErr(errMsg(e))) }, [])
+  // your own playlists (not smart ones: those fill themselves); the last one used is picked again
+  useEffect(() => {
+    api.get<Playlist[]>(`${V1}/playlists`).then(ps => {
+      const mine = ps.filter(p => p.mine && !p.readonly && !p.smart_id)
+      setPlaylists(mine)
+      const last = localStorage.getItem(PLAYLIST_KEY) || ''
+      if (mine.some(p => p.id === last)) setPlaylist(last)
+    }).catch(() => {})
+  }, [])
+  const pickPlaylist = (id: string) => { setPlaylist(id); localStorage.setItem(PLAYLIST_KEY, id) }
+  const newPlaylist = async (name: string) => {
+    const p = await api.post<Playlist>(`${V1}/playlists`, { name, comment: '', song_ids: [] })
+    setPlaylists(ps => [{ ...p, mine: true } as Playlist, ...ps])
+    window.dispatchEvent(new CustomEvent('pmu:playlists'))
+    return p.id
+  }
   const rootGenre = (k: string) => info?.roots.find(r => r.key === k)?.genre || ''
 
   const inspect = async (link = url) => {
@@ -80,6 +101,7 @@ export function LinkDownloadModal({ onClose }: { onClose: () => void }) {
       await api.post(`${V1}/link-downloads`, {
         url: sg.url, root, artist, album, year: Number(year) || 0, genre, channel: sg.channel, channel_url: sg.channel_url, thumbnail: sg.thumbnail,
         tracks: tracks.map(t => ({ url: t.url, title: t.title })),
+        playlist_id: playlist, playlist_name: playlists.find(p => p.id === playlist)?.name || '',
       })
       toast(`Downloading “${album}” — follow it under Requests`)
       onClose()
@@ -132,6 +154,12 @@ export function LinkDownloadModal({ onClose }: { onClose: () => void }) {
               <Field label="Year"><input value={year} onChange={e => setYear(e.target.value.replace(/\D/g, '').slice(0, 4))} inputMode="numeric" placeholder="none" /></Field>
               <Field label="Genre"><input value={genre} onChange={e => setGenre(e.target.value)} maxLength={60} placeholder="none" /></Field>
             </div>
+
+            <Field label="Add to a playlist" help={playlist ? 'Added once your music server has scanned the new files' : 'Optional — pick one, or type a name to make a new one'}>
+              <Select ariaLabel="Playlist" value={playlist} onChange={pickPlaylist} placeholder="No playlist" clearLabel="No playlist"
+                options={playlists.map(p => ({ value: p.id, label: p.name, hint: `${p.songCount} songs` }))}
+                onCreate={newPlaylist} createLabel="New playlist" />
+            </Field>
 
             <Field label={tracks.length > 1 ? `Tracks (${tracks.length})` : 'Track title'}>
               <div className={tracks.length > 1 ? 'link-tracks' : ''}>
@@ -190,7 +218,7 @@ export function LinkDownloads({ onAdd }: { onAdd: () => void }) {
                 <Cover src={d.cover_url} size={52} label={d.album} />
                 <div className="grow">
                   <div className="ellipsis"><b>{d.album}</b></div>
-                  <div className="muted small ellipsis">{d.artist}{d.year ? ` · ${d.year}` : ''} · {d.folder} · {fmtDate(d.created_at.slice(0, 10))}</div>
+                  <div className="muted small ellipsis">{d.artist}{d.year ? ` · ${d.year}` : ''} · {d.folder}{d.playlist_name ? ` · → ${d.playlist_name}` : ''} · {fmtDate(d.created_at.slice(0, 10))}</div>
                   {d.error && <div className={`small ellipsis ${d.state === 'failed' ? 'text-danger' : 'muted'}`} title={d.error}>{d.error}</div>}
                 </div>
                 {d.state === 'done' && d.album_id

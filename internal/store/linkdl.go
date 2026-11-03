@@ -33,16 +33,18 @@ type LinkDownload struct {
 	Detail     string      `json:"detail"`
 	Error      string      `json:"error"`
 	AlbumID    string      `json:"album_id"`
+	Playlist   string      `json:"playlist_id"` // add the tracks to this playlist when they are in the library
+	PlaylistNm string      `json:"playlist_name"`
 	CreatedAt  string      `json:"created_at"`
 	UpdatedAt  string      `json:"updated_at"`
 }
 
-const linkCols = `id, user_id, url, artist, album, year, genre, folder, cover_url, channel, channel_url, tracks, state, detail, error, album_id, created_at, updated_at`
+const linkCols = `id, user_id, url, artist, album, year, genre, folder, cover_url, channel, channel_url, tracks, state, detail, error, album_id, playlist_id, playlist_name, created_at, updated_at`
 
 func scanLink(row interface{ Scan(...any) error }) (*LinkDownload, error) {
 	var d LinkDownload
 	var tracks string
-	if err := row.Scan(&d.ID, &d.UserID, &d.URL, &d.Artist, &d.Album, &d.Year, &d.Genre, &d.Folder, &d.CoverURL, &d.Channel, &d.ChannelURL, &tracks, &d.State, &d.Detail, &d.Error, &d.AlbumID, &d.CreatedAt, &d.UpdatedAt); err != nil {
+	if err := row.Scan(&d.ID, &d.UserID, &d.URL, &d.Artist, &d.Album, &d.Year, &d.Genre, &d.Folder, &d.CoverURL, &d.Channel, &d.ChannelURL, &tracks, &d.State, &d.Detail, &d.Error, &d.AlbumID, &d.Playlist, &d.PlaylistNm, &d.CreatedAt, &d.UpdatedAt); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ErrNotFound
 		}
@@ -58,8 +60,8 @@ func scanLink(row interface{ Scan(...any) error }) (*LinkDownload, error) {
 // AddLinkDownload queues a download.
 func (s *Store) AddLinkDownload(ctx context.Context, d *LinkDownload) error {
 	tracks, _ := json.Marshal(d.Tracks)
-	res, err := s.DB.ExecContext(ctx, `INSERT INTO link_downloads (user_id, url, artist, album, year, genre, folder, cover_url, channel, channel_url, tracks, state) VALUES (?,?,?,?,?,?,?,?,?,?,?, 'queued')`,
-		d.UserID, d.URL, d.Artist, d.Album, d.Year, d.Genre, d.Folder, d.CoverURL, d.Channel, d.ChannelURL, string(tracks))
+	res, err := s.DB.ExecContext(ctx, `INSERT INTO link_downloads (user_id, url, artist, album, year, genre, folder, cover_url, channel, channel_url, tracks, playlist_id, playlist_name, state) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?, 'queued')`,
+		d.UserID, d.URL, d.Artist, d.Album, d.Year, d.Genre, d.Folder, d.CoverURL, d.Channel, d.ChannelURL, string(tracks), d.Playlist, d.PlaylistNm)
 	if err != nil {
 		return err
 	}

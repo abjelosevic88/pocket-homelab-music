@@ -29,6 +29,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/abjelosevic88/pocket-homelab-music/internal/store"
+	"github.com/abjelosevic88/pocket-homelab-music/internal/subsonic"
 	"github.com/abjelosevic88/pocket-homelab-music/internal/ytdlp"
 )
 
@@ -272,6 +273,9 @@ func (s *Server) runLink(ctx context.Context, d *store.LinkDownload) {
 			}
 			_ = s.store.DB.QueryRowContext(jctx, `SELECT id FROM albums WHERE user_id = ? AND lower(name) = lower(?) ORDER BY lower(artist) = lower(?) DESC, added_at DESC LIMIT 1`,
 				d.UserID, d.Album, d.Artist).Scan(&d.AlbumID)
+			if d.Playlist != "" {
+				s.linkToPlaylist(jctx, d, mc)
+			}
 		}
 	}
 	got := 0
@@ -281,6 +285,9 @@ func (s *Server) runLink(ctx context.Context, d *store.LinkDownload) {
 		}
 	}
 	d.State, d.Detail = "done", fmt.Sprintf("%d track%s", got, plural(got))
+	if d.Playlist != "" && d.Error == "" {
+		d.Detail += " · added to " + firstNonEmpty(d.PlaylistNm, "the playlist")
+	}
 	save(true)
 	st, _ := s.store.GetSettings(ctx, d.UserID)
 	if u != nil {
@@ -290,6 +297,32 @@ func (s *Server) runLink(ctx context.Context, d *store.LinkDownload) {
 		_ = s.notifyUser(ctx, st, "New in your library", fmt.Sprintf("%s — %s is ready to play.", d.Artist, d.Album), "cd")
 	}
 	go s.syncAll(context.WithoutCancel(ctx)) // everyone else's index too
+}
+
+// linkToPlaylist adds the downloaded tracks (as the library index now knows
+// them) to the chosen playlist, in track order.
+func (s *Server) linkToPlaylist(ctx context.Context, d *store.LinkDownload, mc *musicConn) {
+	var ids []string
+	for _, t := range d.Tracks {
+		if t.File == "" {
+			continue
+		}
+		var id string
+		err := s.store.DB.QueryRowContext(ctx, `SELECT id FROM songs INDEXED BY songs_match WHERE user_id = ? AND lower(artist) = lower(?) AND lower(album) = lower(?) AND lower(title) = lower(?)
+			ORDER BY track = ? DESC, added_at DESC LIMIT 1`, d.UserID, d.Artist, d.Album, t.Title, t.Number).Scan(&id)
+		if err == nil {
+			ids = append(ids, id)
+		}
+	}
+	if len(ids) == 0 {
+		d.Error = "not added to the playlist: your music server has not listed the new tracks yet"
+		return
+	}
+	if err := mc.c.UpdatePlaylist(ctx, d.Playlist, subsonic.PlaylistUpdate{Add: ids}); err != nil {
+		d.Error = "not added to the playlist: " + err.Error()
+		return
+	}
+	s.livePlaylists(d.UserID, "updated", []string{d.Playlist}, 0)
 }
 
 func plural(n int) string {
@@ -767,6 +800,8 @@ func (s *Server) handleLinkCreate(w http.ResponseWriter, r *http.Request) {
 		ChannelURL string             `json:"channel_url"`
 		Thumbnail  string             `json:"thumbnail"`
 		Tracks     []linkSuggestTrack `json:"tracks"`
+		Playlist   string             `json:"playlist_id"`
+		PlaylistNm string             `json:"playlist_name"`
 	}
 	if err := decode(r, &in); err != nil {
 		writeErr(w, http.StatusBadRequest, "bad request")
@@ -800,7 +835,8 @@ func (s *Server) handleLinkCreate(w http.ResponseWriter, r *http.Request) {
 	}
 	u := userFrom(r.Context())
 	d := &store.LinkDownload{UserID: u.ID, URL: link, Artist: in.Artist, Album: in.Album, Year: in.Year, Genre: in.Genre,
-		Folder: pl.Folder, CoverURL: in.Thumbnail, Channel: cleanChannel(in.Channel), ChannelURL: in.ChannelURL}
+		Folder: pl.Folder, CoverURL: in.Thumbnail, Channel: cleanChannel(in.Channel), ChannelURL: in.ChannelURL,
+		Playlist: strings.TrimSpace(in.Playlist), PlaylistNm: strings.TrimSpace(in.PlaylistNm)}
 	for i, t := range in.Tracks {
 		tu, err := checkLink(t.URL)
 		if err != nil {
