@@ -106,3 +106,6 @@ export interface LyricsFileDetail { file: LyricsFile; text: string; song: Song |
 export interface LrclibMatch { id: number; artist: string; title: string; album: string; duration: number; instrumental: boolean; synced: boolean; text: string }
 export interface LyricsLibrary { writable: boolean; detail: string; music_dir: string; running: boolean; enabled: boolean; attempts: number; synced_total: number; runs: LyricsRun[] }
 export interface SubsonicLogin { enabled: boolean; server_url: string; suggested: string; username?: string; created_at?: string; last_used_at?: string; last_client?: string; password?: string }
+
+/** How far a download from a link is (only while it runs). fraction -1 = can't tell. */
+export interface LinkProgress { fraction: number; phase: 'prepare' | 'download' | 'convert' | 'scan'; speed: number; eta: number; track: number; tracks: number }

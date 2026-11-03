@@ -7,7 +7,7 @@
 // (re)connect starts with "hello", and after a drop listeners get a
 // synthetic "resync" so whatever changed meanwhile is fetched again.
 import { useEffect, useRef, useState } from 'react'
-import type { Device } from './types'
+import type { Device, LinkProgress } from './types'
 import { V1 } from './music'
 
 export type LiveEvent =
@@ -24,7 +24,7 @@ export type LiveEvent =
   | { type: 'requests'; data: { action: 'added' | 'updated' | 'deleted'; ids: number[] } }
   | { type: 'lyrics'; data: { file_ids: number[]; many?: number } }
   | { type: 'lyrics_job'; data: { kind: 'run' | 'index'; state: string; done: number; total: number } }
-  | { type: 'link_downloads'; data: { id: number; state: string; detail: string } }
+  | { type: 'link_downloads'; data: { id: number; state: string; detail: string; progress?: LinkProgress } }
   | { type: 'import'; data: { id: number; state?: string; seen: number; imported: number } }
 
 export type LiveType = LiveEvent['type']

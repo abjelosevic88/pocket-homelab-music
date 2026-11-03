@@ -6,18 +6,18 @@ import { Link } from 'react-router-dom'
 import { api } from '../lib/api'
 import { V1, longDuration } from '../lib/music'
 import { fmtDate } from '../lib/format'
-import { useLiveRefresh } from '../lib/live'
+import { onLive, useLiveRefresh } from '../lib/live'
 import { Icon } from './icons'
 import { Cover } from './music'
 import { Field, Modal, Segmented, Spinner, errMsg, useDebounce, useToast } from './ui'
 import { Select } from './Select'
-import type { Playlist } from '../lib/types'
+import type { LinkProgress, Playlist } from '../lib/types'
 
 export interface LinkTrack { url: string; title: string; number?: number; file?: string; duration?: number }
 export interface LinkDownload {
   id: number; url: string; artist: string; album: string; year: number; genre: string; folder: string; cover_url: string
   tracks: LinkTrack[]; playlist_id: string; playlist_name: string; state: 'queued' | 'downloading' | 'scanning' | 'done' | 'failed'; detail: string; error: string; album_id: string
-  created_at: string; updated_at: string
+  created_at: string; updated_at: string; progress?: LinkProgress
 }
 interface Root { key: string; label: string; genre: string; exists: boolean }
 interface LinkList { ready: boolean; detail: string; roots: Root[]; items: LinkDownload[] }
@@ -201,7 +201,12 @@ export function LinkDownloads({ onAdd }: { onAdd: () => void }) {
   const [items, setItems] = useState<LinkDownload[] | null>(null)
   const load = () => api.get<LinkList>(`${V1}/link-downloads`).then(r => setItems(r.items)).catch(() => setItems([]))
   useEffect(() => { load() }, [])
-  useLiveRefresh(ev => ev.type === 'link_downloads', load)
+  // progress comes with the live event: patch the row; anything else (a new state, a new download) reloads
+  useEffect(() => onLive(ev => {
+    if (ev.type !== 'link_downloads') return
+    setItems(list => list && list.map(d => d.id === ev.data.id && d.state === ev.data.state ? { ...d, detail: ev.data.detail, progress: ev.data.progress } : d))
+  }), [])
+  useLiveRefresh(ev => ev.type === 'link_downloads' && !items?.some(d => d.id === ev.data.id && d.state === ev.data.state), load)
   if (!items) return null
   const forget = async (d: LinkDownload) => {
     try { await api.del(`${V1}/link-downloads/${d.id}`); load() } catch (e) { toast(errMsg(e), 'err') }
@@ -226,12 +231,13 @@ export function LinkDownloads({ onAdd }: { onAdd: () => void }) {
                 <div className="grow">
                   <div className="ellipsis"><b>{d.album}</b></div>
                   <div className="muted small ellipsis">{d.artist}{d.year ? ` · ${d.year}` : ''} · {d.folder}{d.playlist_name ? ` · → ${d.playlist_name}` : ''} · {fmtDate(d.created_at.slice(0, 10))}</div>
+                  {running && <LinkProgressBar d={d} />}
                   {d.error && <div className={`small ellipsis ${d.state === 'failed' ? 'text-danger' : 'muted'}`} title={d.error}>{d.error}</div>}
                 </div>
                 {d.state === 'done' && d.album_id
                   ? <Link to={`/albums/${d.album_id}`} className="badge ok">In your library</Link>
                   : <span className={`badge ${d.state === 'done' ? 'ok' : d.state === 'failed' ? 'danger' : d.state === 'queued' ? '' : 'accent'}`}>
-                    {d.state === 'queued' ? 'Waiting' : d.state === 'downloading' ? `Downloading${d.detail ? ' ' + d.detail : ''}` : d.state === 'scanning' ? 'Adding to library' : d.state === 'done' ? 'Downloaded' : 'Failed'}
+                    {d.state === 'queued' ? 'Waiting' : d.state === 'downloading' ? (d.progress?.phase === 'convert' ? 'Processing' : d.progress?.phase === 'download' ? `Downloading ${Math.floor(d.progress.fraction * 100)}%` : 'Starting') : d.state === 'scanning' ? 'Adding to library' : d.state === 'done' ? 'Downloaded' : 'Failed'}
                   </span>}
                 <button type="button" className="btn ghost icon-only sm" aria-label={running ? 'Stop' : 'Forget'} title={running ? 'Stop (tracks already downloaded stay)' : 'Forget (the files stay)'} onClick={() => forget(d)}><Icon name="x" size={14} /></button>
               </div>
@@ -240,5 +246,27 @@ export function LinkDownloads({ onAdd }: { onAdd: () => void }) {
         </div>
       )}
     </section>
+  )
+}
+
+const mb = (b: number) => b >= 1 << 20 ? `${(b / (1 << 20)).toFixed(1)} MB/s` : `${Math.round(b / 1024)} KB/s`
+const left = (sec: number) => sec >= 3600 ? `${Math.floor(sec / 3600)} h ${Math.round((sec % 3600) / 60)} min left` : sec >= 60 ? `${Math.round(sec / 60)} min left` : `${Math.max(1, Math.round(sec))} s left`
+
+/** A thin bar under a running download, with what it's doing. */
+function LinkProgressBar({ d }: { d: LinkDownload }) {
+  const p = d.progress
+  const known = !!p && p.fraction >= 0
+  const words = !p ? (d.state === 'queued' ? 'Waiting for the download before it' : 'Starting…')
+    : p.phase === 'scan' ? 'Your music server is reading the new files'
+      : [p.tracks > 1 ? `Track ${p.track} of ${p.tracks}` : '',
+        p.phase === 'prepare' ? 'reading the video page' : p.phase === 'convert' ? 'turning it into an audio file, tags and cover' : [`${Math.floor(p.fraction * 100)}%`, p.speed > 0 ? mb(p.speed) : '', p.eta > 0 ? left(p.eta) : ''].filter(Boolean).join(' · ')]
+        .filter(Boolean).join(' · ')
+  return (
+    <div className="link-progress">
+      <div className={`link-bar ${known && p!.phase === 'download' ? '' : 'busy'}`} role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={known ? Math.floor(p!.fraction * 100) : undefined}>
+        <span style={known ? { width: `${Math.max(2, p!.fraction * 100)}%` } : undefined} />
+      </div>
+      <div className="muted xsmall ellipsis">{words}</div>
+    </div>
   )
 }

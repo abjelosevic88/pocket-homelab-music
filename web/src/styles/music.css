@@ -583,3 +583,9 @@ a.top-row:hover { background: var(--hover); }
 .link-path .icon { margin-top: 2px; flex: none; }
 .text-danger { color: var(--danger); }
 @media (max-width: 560px) { .link-source { align-items: flex-start; } }
+.link-progress { margin-top: 6px; display: grid; gap: 4px; max-width: 520px; }
+.link-bar { position: relative; height: 4px; border-radius: 4px; background: var(--surface-2); overflow: hidden; }
+.link-bar > span { position: absolute; inset: 0 auto 0 0; background: var(--accent); border-radius: 4px; transition: width .6s ease; }
+.link-bar.busy > span { width: 30% !important; animation: link-busy 1.4s ease-in-out infinite; }
+@keyframes link-busy { 0% { left: -30%; } 100% { left: 100%; } }
+@media (prefers-reduced-motion: reduce) { .link-bar.busy > span { animation: none; width: 100% !important; opacity: .5; } }

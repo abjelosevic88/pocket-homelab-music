@@ -43,6 +43,23 @@ type linkState struct {
 	running int64
 	cancel  context.CancelFunc
 	lastLiv time.Time
+	prog    linkProgress // of the running download
+}
+
+// linkProgress is how far the running download is; kept in memory, sent live.
+type linkProgress struct {
+	Fraction float64 `json:"fraction"` // of the whole download, 0..1; -1 = can't tell (the server scanning)
+	Phase    string  `json:"phase"`    // prepare | download | convert | scan
+	Speed    float64 `json:"speed"`    // bytes per second while downloading
+	ETA      float64 `json:"eta"`      // seconds left of this track
+	Track    int     `json:"track"`
+	Tracks   int     `json:"tracks"`
+}
+
+// linkView is a download as the list shows it.
+type linkView struct {
+	store.LinkDownload
+	Progress *linkProgress `json:"progress,omitempty"`
 }
 
 var linkAudioExt = map[string]bool{".opus": true, ".m4a": true, ".mp3": true, ".ogg": true, ".flac": true, ".wav": true, ".aac": true}
@@ -123,7 +140,28 @@ func (s *Server) liveLink(d *store.LinkDownload, force bool) {
 		s.lnk.lastLiv = time.Now()
 		s.lnk.mu.Unlock()
 	}
-	s.hub.send(d.UserID, "link_downloads", map[string]any{"id": d.ID, "state": d.State, "detail": d.Detail})
+	v := map[string]any{"id": d.ID, "state": d.State, "detail": d.Detail}
+	if p := s.linkProgressOf(d.ID); p != nil {
+		v["progress"] = p
+	}
+	s.hub.send(d.UserID, "link_downloads", v)
+}
+
+func (s *Server) linkProgressOf(id int64) *linkProgress {
+	s.lnk.mu.Lock()
+	defer s.lnk.mu.Unlock()
+	if s.lnk.running != id || s.lnk.prog.Phase == "" {
+		return nil
+	}
+	p := s.lnk.prog
+	return &p
+}
+
+func (s *Server) setLinkProgress(d *store.LinkDownload, p linkProgress, force bool) {
+	s.lnk.mu.Lock()
+	s.lnk.prog = p
+	s.lnk.mu.Unlock()
+	s.liveLink(d, force)
 }
 
 func (s *Server) runLink(ctx context.Context, d *store.LinkDownload) {
@@ -134,7 +172,7 @@ func (s *Server) runLink(ctx context.Context, d *store.LinkDownload) {
 	defer func() {
 		cancel()
 		s.lnk.mu.Lock()
-		s.lnk.running, s.lnk.cancel = 0, nil
+		s.lnk.running, s.lnk.cancel, s.lnk.prog = 0, nil, linkProgress{}
 		s.lnk.mu.Unlock()
 	}()
 	save := func(force bool) {
@@ -182,20 +220,29 @@ func (s *Server) runLink(ctx context.Context, d *store.LinkDownload) {
 			if len(d.Tracks) > 1 {
 				d.Detail = fmt.Sprintf("track %d of %d", i+1, len(d.Tracks))
 			}
+			n := float64(len(d.Tracks))
+			prog := linkProgress{Fraction: float64(i) / n, Phase: "prepare", Track: i + 1, Tracks: len(d.Tracks)}
+			s.lnk.mu.Lock()
+			s.lnk.prog = prog
+			s.lnk.mu.Unlock()
 			save(true)
 			name := fmt.Sprintf("%02d. %s", t.Number, sanitizeName(t.Title))
 			res, err := s.yt.Download(jctx, ytdlp.Job{URL: t.URL, Dir: dir, TempDir: temp, Name: name}, func(p ytdlp.Progress) {
+				if p.Status == "finished" {
+					// downloaded; yt-dlp now turns it into an audio file (minutes for a long video)
+					prog.Phase, prog.Speed, prog.ETA, prog.Fraction = "convert", 0, 0, (float64(i)+0.97)/n
+					s.setLinkProgress(d, prog, true)
+					return
+				}
 				total := float64(p.Total)
 				if total <= 0 {
 					total = p.Estimate
 				}
 				if total > 0 {
-					pct := int(float64(p.Downloaded) * 100 / total)
-					d.Detail = fmt.Sprintf("%d%%", pct)
-					if len(d.Tracks) > 1 {
-						d.Detail = fmt.Sprintf("track %d of %d · %d%%", i+1, len(d.Tracks), pct)
-					}
-					s.liveLink(d, false)
+					f := min(float64(p.Downloaded)/total, 1)
+					first := prog.Phase == "prepare"
+					prog.Phase, prog.Fraction, prog.Speed, prog.ETA = "download", (float64(i)+0.95*f)/n, p.Speed, p.ETA
+					s.setLinkProgress(d, prog, first)
 				}
 			})
 			if err != nil {
@@ -207,6 +254,8 @@ func (s *Server) runLink(ctx context.Context, d *store.LinkDownload) {
 				s.log.Warn("link download track", "id", d.ID, "url", t.URL, "err", err)
 				continue
 			}
+			prog.Phase = "convert"
+			s.setLinkProgress(d, prog, true)
 			pic := ""
 			if res.Thumb != "" {
 				sq := strings.TrimSuffix(res.Thumb, ".jpg") + ".square.jpg"
@@ -250,6 +299,7 @@ func (s *Server) runLink(ctx context.Context, d *store.LinkDownload) {
 		d.State, d.Detail = "scanning", "your music server is reading the new files"
 		save(true)
 	}
+	s.setLinkProgress(d, linkProgress{Fraction: -1, Phase: "scan"}, true)
 
 	// let the music server read the folder now, then bring the index up to date
 	u, err := s.store.GetUser(ctx, d.UserID)
@@ -708,6 +758,10 @@ func (s *Server) handleLinkDownloads(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, err, "link downloads")
 		return
 	}
+	views := make([]linkView, 0, len(items))
+	for _, d := range items {
+		views = append(views, linkView{LinkDownload: d, Progress: s.linkProgressOf(d.ID)})
+	}
 	ok, why := s.linkReady()
 	roots := []map[string]any{}
 	for _, rt := range linkRoots {
@@ -715,7 +769,7 @@ func (s *Server) handleLinkDownloads(w http.ResponseWriter, r *http.Request) {
 		fi, err := os.Stat(p)
 		roots = append(roots, map[string]any{"key": rt.Key, "label": rt.Label, "genre": rt.Genre, "exists": err == nil && fi.IsDir()})
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"ready": ok, "detail": why, "roots": roots, "items": items})
+	writeJSON(w, http.StatusOK, map[string]any{"ready": ok, "detail": why, "roots": roots, "items": views})
 }
 
 func (s *Server) handleLinkInspect(w http.ResponseWriter, r *http.Request) {
