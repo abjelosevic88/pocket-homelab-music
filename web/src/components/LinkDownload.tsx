@@ -48,6 +48,7 @@ export function LinkDownloadModal({ onClose }: { onClose: () => void }) {
   const [busy, setBusy] = useState(false)
   const [playlists, setPlaylists] = useState<Playlist[]>([])
   const [playlist, setPlaylist] = useState('')
+  const [genres, setGenres] = useState<string[]>([])
   const read = useRef(0)
 
   useEffect(() => { api.get<LinkList>(`${V1}/link-downloads`).then(setInfo).catch(e => setErr(errMsg(e))) }, [])
@@ -60,6 +61,9 @@ export function LinkDownloadModal({ onClose }: { onClose: () => void }) {
       if (mine.some(p => p.id === last)) setPlaylist(last)
     }).catch(() => {})
   }, [])
+  // the library's genres, most songs first
+  useEffect(() => { api.get<{ name: string }[]>(`${V1}/genres`).then(gs => setGenres(gs.map(g => g.name).filter(Boolean))).catch(() => {}) }, [])
+  const genreOptions = [...(genre && !genres.some(g => g.toLowerCase() === genre.toLowerCase()) ? [genre] : []), ...genres].map(g => ({ value: g, label: g }))
   const pickPlaylist = (id: string) => { setPlaylist(id); localStorage.setItem(PLAYLIST_KEY, id) }
   const newPlaylist = async (name: string) => {
     const p = await api.post<Playlist>(`${V1}/playlists`, { name, comment: '', song_ids: [] })
@@ -152,7 +156,10 @@ export function LinkDownloadModal({ onClose }: { onClose: () => void }) {
             </div>
             <div className="two-col">
               <Field label="Year"><input value={year} onChange={e => setYear(e.target.value.replace(/\D/g, '').slice(0, 4))} inputMode="numeric" placeholder="none" /></Field>
-              <Field label="Genre"><input value={genre} onChange={e => setGenre(e.target.value)} maxLength={60} placeholder="none" /></Field>
+              <Field label="Genre">
+                <Select ariaLabel="Genre" value={genre} onChange={setGenre} placeholder="No genre" clearLabel="No genre"
+                  options={genreOptions} onCreate={g => g.slice(0, 60)} createLabel="New genre" />
+              </Field>
             </div>
 
             <Field label="Add to a playlist" help={playlist ? 'Added once your music server has scanned the new files' : 'Optional — pick one, or type a name to make a new one'}>
