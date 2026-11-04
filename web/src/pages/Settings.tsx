@@ -133,7 +133,8 @@ function Library() {
   const { toast } = useToast()
   const { settings } = useApp()
   const [c, setC] = useState<Connection | null>(null)
-  const [mode, setMode] = useState<'core' | 'direct' | 'off'>('direct')
+  const [mode, setMode] = useState<Connection['mode']>('direct')
+  const [showPw, setShowPw] = useState(false)
   const [form, setForm] = useState({ url: '', username: '', password: '' })
   const [busy, setBusy] = useState(false)
   const [sync, setSync] = useState<{ state: string; progress?: number } | null>(null)
@@ -154,13 +155,20 @@ function Library() {
         <div className="conn-block">
           <div className="conn-mode">
             <Segmented size="sm" value={mode} onChange={m => { setMode(m); if (m !== 'direct') save(m) }} options={[
+              ...(c.bundled ? [{ value: 'bundled' as const, label: 'Included', title: 'Your own account on the Navidrome that comes with Pocket Music' }] : []),
               { value: 'core', label: 'Pocket Core', title: coreOn ? 'The Navidrome login Pocket Core holds for you' : 'Needs Pocket Core', disabled: !c.core_configured },
-              { value: 'direct', label: 'My account' }, { value: 'off', label: 'Off' }]} />
+              { value: 'direct', label: c.bundled ? 'Another server' : 'My account' }, { value: 'off', label: 'Off' }]} />
           </div>
-          {!c.core_configured && <CoreHint />}
+          {!c.core_configured && !c.bundled && <CoreHint />}
           <div className={`conn-status ${mode === 'off' ? '' : c.connected ? 'ok' : 'bad'}`}><span className="dot" />
-            {c.connected ? <>Signed in as <b>{c.account}</b> on {c.server_type} {c.server_version}{c.via === 'core' ? ' — the login Pocket Core keeps for you (Pocket Core → Settings → My logins)' : ''}.</> : c.message}
+            {c.connected ? <>Signed in as <b>{c.account}</b> on {c.server_type} {c.server_version}{c.via === 'core' ? ' — the login Pocket Core keeps for you (Pocket Core → Settings → My logins)' : c.via === 'bundled' ? ' — the Navidrome that comes with Pocket Music, with an account of your own' : ''}.</> : c.message}
           </div>
+          {mode === 'bundled' && c.bundled_admin && (
+            <div className="stack">
+              <p className="muted small">Music goes in the <code>music</code> folder next to Pocket Music's <code>docker-compose.yml</code> (or the folder set as <code>MUSIC_FOLDER</code>), as <code>Artist/YYYY - Album/NN. Title.flac</code>. New albums show up within a minute.</p>
+              <p className="muted small">Navidrome's own web player and settings (publish its port in the compose file first): user <code>{c.bundled_admin.user}</code>, password {showPw ? <code>{c.bundled_admin.password}</code> : <button type="button" className="link-btn" onClick={() => setShowPw(true)}>show</button>}</p>
+            </div>
+          )}
           {mode === 'direct' && (
             <form className="stack" onSubmit={e => { e.preventDefault(); save('direct') }}>
               {!c.server_url && <Field label="Server address" help="Navidrome, Gonic, Airsonic… e.g. http://navidrome:4533"><input value={form.url} onChange={e => setForm({ ...form, url: e.target.value })} placeholder="https://music.example.com" /></Field>}

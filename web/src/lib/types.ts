@@ -42,7 +42,8 @@ export interface Stats {
 
 export interface SyncState { last_scan: string; synced_at: string; checked_at: string; state: string; progress: number; error: string; songs: number; albums: number; artists: number }
 export interface Connection {
-  connected: boolean; message?: string; mode: 'direct' | 'core' | 'off'; via?: 'direct' | 'core'; account?: string; username?: string; custom_url?: string
+  connected: boolean; message?: string; mode: 'direct' | 'core' | 'bundled' | 'off'; via?: 'direct' | 'core' | 'bundled'; account?: string; username?: string; custom_url?: string
+  bundled: boolean; bundled_admin?: { user: string; password: string }
   server_type?: string; server_version?: string; public_url?: string; server_url: boolean; core: boolean; core_configured: boolean; sync: SyncState; syncing: boolean
 }
 

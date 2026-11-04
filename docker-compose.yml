@@ -1,4 +1,13 @@
-# Pocket Music — a player for the household on top of Navidrome (or any Subsonic server). Go + SQLite. One container, one volume.
+# Pocket Music — a player for the household on top of Navidrome (or any Subsonic server). Go + SQLite.
+#
+# With its own Navidrome:  COMPOSE_PROFILES=navidrome docker compose up -d
+#   (or COMPOSE_PROFILES=navidrome in .env, as in .env.example and Pocket Core's installer)
+#   starts the app and Navidrome over one music folder (MUSIC_FOLDER, default ./music).
+#   Pocket Music makes Navidrome's first account by itself and gives everyone who uses
+#   it an account of their own. Navidrome has no port of its own: only the app reaches it.
+# With your Navidrome:     NAVIDROME_URL=http://your-navidrome:4533 docker compose up -d
+#   starts only the app; everyone signs in with their own account under Settings →
+#   Library. A Navidrome that already has accounts is never changed.
 services:
   pocket-music:
     image: ghcr.io/abjelosevic88/pocket-homelab-music:latest
@@ -10,13 +19,18 @@ services:
       TZ: ${TZ:-Europe/Berlin}
       BASE_URL: ${BASE_URL:-http://localhost:8080}
       # SECURE_COOKIES: "true"          # behind HTTPS
-      # Your music server. Everyone signs in with their own account on it (Settings → Library).
+      # The Navidrome below, or yours (see the top of this file).
       NAVIDROME_URL: ${NAVIDROME_URL:-http://navidrome:4533}
+      # auto: set up a fresh Navidrome (the one below); leave one that has accounts alone
+      NAVIDROME_BUNDLED: ${NAVIDROME_BUNDLED:-auto}
+      # What a browser opens for "Open in Navidrome", if you publish its port:
       NAVIDROME_PUBLIC_URL: ${NAVIDROME_PUBLIC_URL:-}
+      # The music folder (below): lyrics are written into it and "Add from a link" saves there.
+      MUSIC_DIR: /music
       # First admin (only used while the database has no users):
       ADMIN_EMAIL: ${ADMIN_EMAIL:-}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
-      # The admin's own music-server account, copied once into their connection:
+      # Your own Navidrome only: the admin's account there, copied once into their connection:
       NAVIDROME_USER: ${NAVIDROME_USER:-}
       NAVIDROME_PASSWORD: ${NAVIDROME_PASSWORD:-}
       # Optional, also settable per person in the UI:
@@ -29,5 +43,32 @@ services:
       # CORE_REGISTRATION_KEY: ${CORE_REGISTRATION_KEY}
     volumes:
       - ./data:/data
+      - ${MUSIC_FOLDER:-./music}:/music
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    depends_on:
+      navidrome:
+        condition: service_started
+        required: false   # only with the navidrome profile
+
+  # Navidrome, the official image (the "navidrome" profile). It reads the same
+  # music folder (Artist/YYYY - Album/NN. Title.flac) and notices new albums by itself.
+  navidrome:
+    image: deluan/navidrome:latest
+    container_name: pocket-music-navidrome
+    profiles: [navidrome]
+    restart: unless-stopped
+    environment:
+      TZ: ${TZ:-Europe/Berlin}
+      ND_MUSICFOLDER: /music
+      ND_DATAFOLDER: /data
+      ND_SCANNER_SCHEDULE: "@every 1h"   # besides the folder watcher
+    volumes:
+      # Navidrome's database and artwork cache
+      - ${NAVIDROME_DATA_DIR:-./navidrome}:/data
+      - ${MUSIC_FOLDER:-./music}:/music:ro
+    # Navidrome's own web player, and Subsonic apps that should reach it directly
+    # (sign in as "pocket-music"; the password is under Settings → Library as an admin).
+    # Phone apps can also use Pocket Music's own Subsonic address (Settings → Phone & car apps).
+    # ports:
+    #   - "4533:4533"

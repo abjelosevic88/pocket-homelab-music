@@ -1,6 +1,6 @@
 <p align="center"><img src="web/public/favicon.svg" width="72" alt=""></p>
 <h1 align="center">Pocket Music</h1>
-<p align="center">Your music library, played anywhere: a player for the whole household on top of Navidrome, with your listening history and stats, daily mixes and radio, smart playlists every Subsonic app sees, synced lyrics, “make me a mix” from a sentence, the albums you’re missing fetched through Lidarr, and YouTube links saved into the library as proper albums.<br>One Go binary, one SQLite file, one volume.</p>
+<p align="center">Your music library, played anywhere: a player for the whole household on top of Navidrome, with your listening history and stats, daily mixes and radio, smart playlists every Subsonic app sees, synced lyrics, “make me a mix” from a sentence, the albums you’re missing fetched through Lidarr, and YouTube links saved into the library as proper albums.<br>Comes with its own Navidrome, set up for you — or works with yours.</p>
 <p align="center">
   <a href="https://github.com/abjelosevic88/pocket-homelab-music/actions"><img src="https://github.com/abjelosevic88/pocket-homelab-music/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI"></a>
   <a href="https://github.com/abjelosevic88/pocket-homelab-music/pkgs/container/pocket-homelab-music"><img src="https://img.shields.io/badge/ghcr.io-amd64%20%7C%20arm64%20%7C%20armv7-blue" alt="image"></a>
@@ -51,6 +51,21 @@ your library *through* Navidrome, with each person’s own account, and adds wha
 you listen to, making something new from your own shelves every day, telling you what’s missing, and connecting
 your music to the rest of your Pocket apps. Keep using any Subsonic app alongside: playlists, smart playlists, loves
 and play counts show up there too. More in [docs/design.md](docs/design.md).
+
+## Navidrome included, or bring your own
+
+**No music server yet?** Pocket Music can bring its own Navidrome, and you never have to open it:
+
+- It runs next to Pocket Music with no port of its own, over the same music folder. Only the app talks to it.
+- On the first start Pocket Music makes Navidrome's first account for you.
+- Everyone who signs in to Pocket Music gets their own Navidrome account automatically, so playlists, loves and play
+  counts stay theirs. Phone and car apps sign in through Pocket Music's own Subsonic address.
+- New albums show up within a minute.
+
+**Already run Navidrome?** Point Pocket Music at it instead. It never changes a Navidrome that already has accounts;
+everyone signs in with their own account there.
+
+The same [docker-compose.yml](docker-compose.yml) does both: the bundled Navidrome is its `navidrome` profile.
 
 ## What it does
 
@@ -114,6 +129,45 @@ and play counts show up there too. More in [docs/design.md](docs/design.md).
 
 ## Run it
 
+Pick one of three ways. Whichever you choose, open Pocket Music afterwards and create the first account. See
+[docs/configuration.md](docs/configuration.md) for every option, [docs/api.md](docs/api.md) for the API (and a
+Homepage widget), [docs/reverse-proxy.md](docs/reverse-proxy.md) and [docs/backup.md](docs/backup.md).
+
+### With Pocket Core: one click
+
+In [Pocket Core](https://github.com/abjelosevic88/pocket-homelab-core), go to **Apps → Install app → Pocket Music**.
+It installs Pocket Music with its own Navidrome, creates a `music` folder in the app's folder, and signs everyone in
+with Pocket Core. Copy your albums in, and that's all.
+
+### With its own Navidrome (Docker Compose)
+
+Download [docker-compose.yml](docker-compose.yml) and [.env.example](.env.example) (save it as `.env` and set
+`BASE_URL`), then:
+
+```sh
+mkdir -p music                       # or set MUSIC_FOLDER in .env to your music folder
+docker compose up -d                 # .env has COMPOSE_PROFILES=navidrome: the app and Navidrome start together
+```
+
+- Pocket Music makes Navidrome's first account a few seconds after the first start.
+- Albums go in `music` as `Artist/YYYY - Album/NN. Title.flac` (any layout Navidrome reads works). Navidrome notices
+  new albums within a minute, and rescans every hour anyway.
+- Lyrics and "Add from a link" write into the same folder.
+- Navidrome has no port of its own. Phone and car apps use Pocket Music's own Subsonic address (Settings → Phone &
+  car apps). For Navidrome's web player, uncomment `4533` under `ports` in the compose file; the user is
+  `pocket-music`, and admins find the password under Settings → Library.
+
+### With the Navidrome you already run
+
+Use the same compose file without the profile: drop `COMPOSE_PROFILES` from `.env`, point Pocket Music at your server,
+and set `MUSIC_FOLDER` to the folder your server reads (for lyrics and link downloads).
+
+```sh
+NAVIDROME_URL=http://your-navidrome:4533 MUSIC_FOLDER=/srv/music docker compose up -d
+```
+
+Or as a single container:
+
 ```sh
 docker run -d --name pocket-music -p 8080:8080 -v ./data:/data \
   -e BASE_URL=https://music.example.com -e SECURE_COOKIES=true \
@@ -121,9 +175,11 @@ docker run -d --name pocket-music -p 8080:8080 -v ./data:/data \
   ghcr.io/abjelosevic88/pocket-homelab-music:latest
 ```
 
-Open it, create the first account, then connect your Navidrome account under Settings → Library. See
-[docs/configuration.md](docs/configuration.md) for every option, [docs/api.md](docs/api.md) for the API (and a
-Homepage widget), [docs/reverse-proxy.md](docs/reverse-proxy.md) and [docs/backup.md](docs/backup.md).
+Everyone connects their own account under Settings → Library (or the login Pocket Core keeps for them). Pocket Music
+never changes a Navidrome that already has accounts; any OpenSubsonic server works this way too.
+
+Switching an install later: to move from the included Navidrome to yours, remove `COMPOSE_PROFILES` from `.env`, set
+`NAVIDROME_URL`, then run `docker compose stop navidrome && docker compose up -d`.
 
 Try it with a Creative Commons demo library: [scripts/demo-library](scripts/demo-library) fetches ten albums and runs
 a throwaway Navidrome; then `make web build && DATA_DIR=/tmp/pm DEMO_DATA=true AUTH_MODE=none NAVIDROME_URL=http://127.0.0.1:4535 NAVIDROME_USER=admin NAVIDROME_PASSWORD=devpass123 ./pocket-music`.
@@ -131,6 +187,7 @@ The screenshots above are that library (credits in [CREDITS.md](scripts/demo-lib
 
 ## Built with
 
-Go, chi, SQLite (modernc, FTS5), React 19, Vite. Works with Navidrome and other OpenSubsonic servers; works alone,
+Go, chi, SQLite (modernc, FTS5), React 19, Vite. The bundled Navidrome is the official `deluan/navidrome` image
+(tested with 0.64). Works with your own Navidrome and other OpenSubsonic servers; works alone,
 and with [Pocket Core](https://github.com/abjelosevic88/pocket-homelab-core) for single sign-on, paired phones and
 the links between apps. MIT licensed.

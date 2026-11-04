@@ -20,12 +20,14 @@ import (
 // DATA_DIR/secret.key), or the Navidrome account Pocket Core holds for them
 // (nothing stored here; Core is asked at most once a minute, so a link
 // switched off in Core applies at once). With neither, the library stays
-// empty and Settings → Library explains what to do.
+// empty and Settings → Library explains what to do. Where Pocket Music came
+// with its own Navidrome, everyone gets an account there instead (kind
+// "bundled", bundled.go).
 
 // musicConn is how one request reaches the person's library.
 type musicConn struct {
 	c      *subsonic.Client
-	via    string // direct | core
+	via    string // direct | core | bundled
 	public string // what a browser opens ("Open in Navidrome")
 	key    string // server URL + account: the index belongs to exactly this
 }
@@ -91,6 +93,12 @@ func (s *Server) musicFor(ctx context.Context, u *store.User) (*musicConn, error
 	}
 	if c != nil && c.Kind == "off" {
 		return nil, &errNoMusic{"your library is switched off in Settings → Library"}
+	}
+	if c != nil && c.Kind == "bundled" || c == nil && s.bundledOn() {
+		if !s.bundledOn() {
+			return nil, &errNoMusic{"Pocket Music no longer comes with its own Navidrome here: connect your music server account in Settings → Library"}
+		}
+		return s.musicBundled(ctx, u)
 	}
 	if c != nil && c.Kind == "direct" {
 		base := s.serverBase(c)
@@ -167,13 +175,23 @@ func (s *Server) handleConnection(w http.ResponseWriter, r *http.Request) {
 		"core_configured": s.core.Configured(),
 		"sync":            s.store.Sync(ctx, u.ID),
 		"syncing":         s.isSyncing(u.ID),
+		"bundled":         s.bundledOn(),
+	}
+	if s.bundledOn() && u.Role == "admin" {
+		// for Navidrome's own web player and settings, where its port is published
+		if pw := s.openKV(ctx, kvBundledAdmin); pw != "" {
+			out["bundled_admin"] = map[string]string{"user": bundledAdmin, "password": pw}
+		}
 	}
 	mode := "core"
+	if s.bundledOn() {
+		mode = "bundled"
+	}
 	if c != nil {
 		mode = c.Kind
 		out["username"] = c.Username
 		out["custom_url"] = c.ServerURL
-	} else if !s.core.Configured() {
+	} else if !s.core.Configured() && !s.bundledOn() {
 		mode = "direct"
 	}
 	out["mode"] = mode
@@ -206,7 +224,7 @@ func (s *Server) handleConnect(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	u := userFrom(ctx)
 	var in struct {
-		Mode     string `json:"mode"` // direct | core | off
+		Mode     string `json:"mode"` // direct | core | bundled | off
 		URL      string `json:"url"`
 		Username string `json:"username"`
 		Password string `json:"password"`
@@ -217,9 +235,13 @@ func (s *Server) handleConnect(w http.ResponseWriter, r *http.Request) {
 	}
 	old, _ := s.store.GetConnection(ctx, u.ID)
 	switch in.Mode {
-	case "off", "core":
+	case "off", "core", "bundled":
 		if in.Mode == "core" && !s.core.Configured() {
 			writeErr(w, http.StatusBadRequest, "there is no Pocket Core on this box")
+			return
+		}
+		if in.Mode == "bundled" && !s.bundledOn() {
+			writeErr(w, http.StatusBadRequest, "Pocket Music did not come with its own Navidrome here")
 			return
 		}
 		if err := s.store.SaveConnection(ctx, &store.Connection{UserID: u.ID, Kind: in.Mode}); err != nil {
@@ -264,7 +286,7 @@ func (s *Server) handleConnect(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	default:
-		writeErr(w, http.StatusBadRequest, "mode is direct, core or off")
+		writeErr(w, http.StatusBadRequest, "mode is direct, core, bundled or off")
 		return
 	}
 	// a different account means a different library: rebuild the index

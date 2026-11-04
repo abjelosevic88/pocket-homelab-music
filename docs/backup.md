@@ -10,7 +10,10 @@ Everything Pocket Music keeps is in `DATA_DIR` (`/data` in the container):
 | `backups/` | Snapshots made by `pocket-music backup` or Settings → Backup & data |
 
 The library index is rebuilt from the music server on its own, so what matters is plays, smart playlists and
-settings. Your music, playlists, stars and ratings live on the music server — back that up there.
+settings. Your music, playlists, stars and ratings live on the music server — back that up there. With the
+Navidrome that comes with Pocket Music, that is `navidrome/` next to the compose file (its database, with the
+accounts Pocket Music made) plus your `music` folder. Pocket Music's own `data/` holds the passwords of those
+accounts, sealed with `secret.key`: keep the two together.
 
 **Never copy the live database file.** Use one of:
 

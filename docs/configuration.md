@@ -41,6 +41,9 @@ playlists, loves, ratings and play counts on the server stay theirs.
 |---|---|---|
 | `NAVIDROME_URL` | – | The server's address as this container reaches it (`http://navidrome:4533`). Without it, each person types an address under Settings → Library. |
 | `NAVIDROME_PUBLIC_URL` | – | What a browser opens for "Open the server" |
+| `NAVIDROME_BUNDLED` | off (`auto` in the sample compose file) | `auto`: a fresh Navidrome at `NAVIDROME_URL` (the sample's `navidrome` profile) gets its first account from the app (administrator `pocket-music`, password sealed in `data/`), and everyone gets their own Navidrome account on first use. A Navidrome that already has accounts is left alone and people sign in to it. `true`: always the bundled one (an error if it already had accounts). |
+| `COMPOSE_PROFILES` | – | Compose, not the app: `navidrome` starts the bundled Navidrome (the sample `.env` and Pocket Core's installer set it) |
+| `MUSIC_FOLDER`, `NAVIDROME_DATA_DIR` | `./music`, `./navidrome` | Compose file only: the host's music folder (the app at `/music`, Navidrome read-only) and Navidrome's database |
 | `NAVIDROME_USER` / `NAVIDROME_PASSWORD` | – | The owner's own account, copied once into their connection (the password is sealed with `DATA_DIR/secret.key`) |
 | `SYNC_EVERY` | `10m` | How often each person's library index is compared with the server's last scan |
 

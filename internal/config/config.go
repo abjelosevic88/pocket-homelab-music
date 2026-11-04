@@ -49,6 +49,10 @@ type Config struct {
 	// from Core instead.
 	NavidromeURL       string
 	NavidromePublicURL string // what a browser opens ("Open in Navidrome")
+	// The Navidrome at NAVIDROME_URL came with Pocket Music (the sample compose
+	// file): the app makes its first account and gives everyone their own.
+	// "true", "auto" (only a fresh Navidrome, or one this app set up before) or "" (never).
+	NavidromeBundled string
 	// The owner's account, copied once into the owner's own connection.
 	NavidromeUser     string
 	NavidromePassword string
@@ -163,6 +167,7 @@ func Load() (*Config, error) {
 
 		NavidromeURL:       strings.TrimRight(env("NAVIDROME_URL", ""), "/"),
 		NavidromePublicURL: strings.TrimRight(env("NAVIDROME_PUBLIC_URL", ""), "/"),
+		NavidromeBundled:   bundledMode(env("NAVIDROME_BUNDLED", "")),
 		NavidromeUser:      env("NAVIDROME_USER", ""),
 		NavidromePassword:  env("NAVIDROME_PASSWORD", ""),
 
@@ -204,10 +209,23 @@ func Load() (*Config, error) {
 	if strings.EqualFold(c.LyricsURL, "off") {
 		c.LyricsURL = ""
 	}
+	if c.NavidromeBundled != "" && c.NavidromeURL == "" {
+		return nil, fmt.Errorf("NAVIDROME_BUNDLED needs NAVIDROME_URL (the bundled Navidrome's address, e.g. http://navidrome:4533)")
+	}
 	if c.SyncEvery < time.Minute {
 		c.SyncEvery = time.Minute
 	}
 	return c, nil
+}
+
+func bundledMode(v string) string {
+	switch strings.ToLower(v) {
+	case "1", "true", "yes", "on":
+		return "true"
+	case "auto":
+		return "auto"
+	}
+	return ""
 }
 
 // Addr returns host:port.

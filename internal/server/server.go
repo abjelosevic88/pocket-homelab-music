@@ -55,6 +55,8 @@ type Server struct {
 	lyr lyricsJob      // the lyrics library run
 	lix lyricsIndexJob // the lyrics index refresh
 
+	bundled bundledState // the Navidrome that comes with Pocket Music
+
 	yt  *ytdlp.Runner // "From a link" downloads
 	lnk linkState
 }
@@ -108,6 +110,9 @@ func (s *Server) Bootstrap(ctx context.Context) error {
 	}
 	_ = s.store.PurgeSessions(ctx)
 	go s.janitor(ctx)
+	if s.cfg.NavidromeBundled != "" {
+		go s.bundledLoop(ctx)
+	}
 	if s.cfg.MusicDir != "" {
 		go s.linkWorker(ctx)
 	}
