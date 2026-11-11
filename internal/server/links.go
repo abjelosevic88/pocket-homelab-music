@@ -19,6 +19,7 @@ import (
 var linkOffers = []core.Offer{
 	{Scope: "listening:read", Name: "See what you listen to", Description: "Read your plays, listening stats and what is playing now, for your journal, dashboards and recaps."},
 	{Scope: "playlists:write", Name: "Make playlists", Description: "Find songs in your library and create or add to playlists (a trip soundtrack, a workout mix)."},
+	{Scope: "music:play", Name: "Play your songs", Description: "Find songs in your library, play them and read their timed words and covers in another app (Pocket Karaoke sings along to them). Nothing is changed or copied."},
 }
 
 type linkRoute struct {
@@ -36,6 +37,8 @@ var linkRoutes = []linkRoute{
 	{"POST", regexp.MustCompile(`^/api/v1/playlists$`), "playlists:write"},
 	{"PUT", regexp.MustCompile(`^/api/v1/playlists/[A-Za-z0-9_-]+$`), "playlists:write"},
 	{"GET", regexp.MustCompile(`^/api/v1/cover/[A-Za-z0-9_-]+$`), "playlists:write"},
+	{"GET", regexp.MustCompile(`^/api/v1/search$`), "music:play"},
+	{"GET", regexp.MustCompile(`^/api/v1/(songs|stream|lyrics|cover)/[A-Za-z0-9_-]+$`), "music:play"},
 }
 
 var errLinkScope = errors.New("outside the link's scope")
