@@ -39,8 +39,14 @@ func New(base, user, password string) *Client {
 	base = strings.TrimSuffix(base, "/rest")
 	return &Client{Base: base, User: user, Password: password,
 		HTTP:   &http.Client{Timeout: 60 * time.Second},
-		Stream: &http.Client{Transport: &http.Transport{Proxy: http.ProxyFromEnvironment, ResponseHeaderTimeout: 60 * time.Second, MaxIdleConnsPerHost: 8}}}
+		Stream: &http.Client{Transport: streamTransport}}
 }
+
+// streamTransport is shared by every Client: New runs on each request, and a Transport of its
+// own per Client kept its idle connections to the music server open for good, until the
+// container ran out of local ports ("connect: cannot assign requested address").
+var streamTransport = &http.Transport{Proxy: http.ProxyFromEnvironment, ResponseHeaderTimeout: 60 * time.Second,
+	MaxIdleConnsPerHost: 8, IdleConnTimeout: 90 * time.Second}
 
 // Error is a failed Subsonic call.
 type Error struct {
