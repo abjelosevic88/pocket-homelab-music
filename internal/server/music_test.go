@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/abjelosevic88/pocket-homelab-music/internal/config"
 	"github.com/abjelosevic88/pocket-homelab-music/internal/store"
 	"github.com/abjelosevic88/pocket-homelab-music/internal/subsonic"
 )
@@ -163,7 +164,7 @@ func subsonicToken(pass, salt string) string {
 }
 
 // testServer is a Music server with two people, each with their own account and library.
-func testServer(t *testing.T) (*Server, *fakeSubsonic, map[string]string, http.Handler) {
+func testServer(t *testing.T, opts ...func(*config.Config)) (*Server, *fakeSubsonic, map[string]string, http.Handler) {
 	t.Helper()
 	fs := newFakeSubsonic(t)
 	fs.add("ana", "ana-pw",
@@ -177,6 +178,9 @@ func testServer(t *testing.T) (*Server, *fakeSubsonic, map[string]string, http.H
 	cfg := testConfig(dir)
 	cfg.NavidromeURL = fs.URL
 	cfg.SyncEvery = time.Hour
+	for _, o := range opts {
+		o(cfg)
+	}
 	st := openTestStore(t, cfg)
 	s := New(cfg, st, slog.New(slog.NewTextHandler(io.Discard, nil)), nil)
 	if err := s.loadSecretKey(); err != nil {

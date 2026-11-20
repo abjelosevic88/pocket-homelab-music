@@ -296,6 +296,7 @@ func (s *Server) registerWithCore(ctx context.Context) error {
 		URL: s.cfg.CoreAppURL, PublicURL: s.cfg.BaseURL, HealthPath: "/healthz", EnvPrefix: "MUSIC",
 		Publishes: eventTopics,
 		Offers:    linkOffers,
+		Portable:  portable,
 		Uses:      []core.Use{core.InferenceUse()},
 		Services: []core.ServiceUse{
 			{Type: "navidrome", Reason: "Your music library: Pocket Music plays it with your own Navidrome account"},

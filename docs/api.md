@@ -78,6 +78,7 @@ that needs the server.
 | `GET /day/{YYYY-MM-DD}` | One day for Pocket Day: summary sentence, totals, top artists and albums, every play |
 | `GET /dashboard` | For a Homepage widget: `now_playing`, `minutes_today`, `plays_today`, `minutes_week`, `top_artist_week`, `songs`, `albums`, `artists`, `requests_open`, `streak` |
 | `GET /imports` · `POST /imports {"source":"maloja","url"}` / `{"source":"listenbrainz","user","token"}` | Import listening history |
+| `GET /export.json` · `POST /import` · `GET /pocket/portable` | Your plays and smart playlists as JSON, and adding such a file (plays already here and playlists with the same name are skipped). Pocket Move can copy your plays and smart playlists out and bring them in (`move:export` / `move:import` links) |
 
 ## Lidarr
 
