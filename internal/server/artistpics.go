@@ -107,7 +107,8 @@ func (s *Server) largeArtistPicture(ctx context.Context, a *store.Artist) (strin
 		s.log.Warn("artist pictures: folder", "err", err)
 		return "", false
 	}
-	for _, src := range s.artistPicSources(ctx, a) {
+	sources, sure := s.artistPicSources(ctx, a)
+	for _, src := range sources {
 		if err := s.saveArtistPicture(ctx, src, p); err == nil {
 			_ = os.Remove(p + ".none")
 			return p, true
@@ -115,31 +116,36 @@ func (s *Server) largeArtistPicture(ctx context.Context, a *store.Artist) (strin
 			return "", false
 		}
 	}
-	if ctx.Err() == nil {
+	// Remember a miss only when every source answered: a rate limit or a timeout is asked again next time.
+	if ctx.Err() == nil && sure {
 		_ = os.WriteFile(p+".none", nil, 0o644)
 	}
 	return "", false
 }
 
 // artistPicSources lists picture URLs, best first: fanart.tv backgrounds, its thumbs, then Deezer.
-func (s *Server) artistPicSources(ctx context.Context, a *store.Artist) []string {
-	var out []string
+// sure is false when a source couldn't be asked (an error, not an answer).
+func (s *Server) artistPicSources(ctx context.Context, a *store.Artist) (out []string, sure bool) {
+	sure = true
 	if s.cfg.FanartAPIKey != "" && mbidRe.MatchString(a.MBID) {
-		out = append(out, s.fanartPictures(ctx, a.MBID)...)
+		pics, ok := s.fanartPictures(ctx, a.MBID)
+		out, sure = append(out, pics...), ok
 	}
-	if u := s.deezerPicture(ctx, a.Name); u != "" {
+	u, ok := s.deezerPicture(ctx, a.Name)
+	if u != "" {
 		out = append(out, u)
 	}
-	return out
+	return out, sure && ok
 }
 
-func (s *Server) fanartPictures(ctx context.Context, mbid string) []string {
+func (s *Server) fanartPictures(ctx context.Context, mbid string) ([]string, bool) {
 	var res struct {
 		Backgrounds []fanartImage `json:"artistbackground"`
 		Thumbs      []fanartImage `json:"artistthumb"`
 	}
 	if err := s.lookupJSON(ctx, fanartAPI+"/"+mbid+"?api_key="+url.QueryEscape(s.cfg.FanartAPIKey), &res); err != nil {
-		return nil
+		// fanart.tv answers 404 for an artist it has nothing of: that's an answer
+		return nil, strings.HasPrefix(err.Error(), "404")
 	}
 	var out []string
 	for _, list := range [][]fanartImage{res.Backgrounds, res.Thumbs} {
@@ -150,7 +156,7 @@ func (s *Server) fanartPictures(ctx context.Context, mbid string) []string {
 			}
 		}
 	}
-	return out
+	return out, true
 }
 
 type fanartImage struct {
@@ -165,17 +171,21 @@ func (f fanartImage) likes() int {
 }
 
 // deezerPicture finds the artist by name (the same name, most fans first) and asks for its largest picture.
-func (s *Server) deezerPicture(ctx context.Context, name string) string {
+func (s *Server) deezerPicture(ctx context.Context, name string) (string, bool) {
 	var res struct {
 		Data []struct {
 			Name      string `json:"name"`
 			PictureXL string `json:"picture_xl"`
 			Fans      int    `json:"nb_fan"`
 		} `json:"data"`
+		Error *struct {
+			Code int `json:"code"`
+		} `json:"error"`
 	}
 	q := url.Values{"q": {`artist:"` + name + `"`}, "limit": {"10"}}
-	if err := s.lookupJSON(ctx, deezerAPI+"/search/artist?"+q.Encode(), &res); err != nil {
-		return ""
+	// Deezer reports a rate limit (or any trouble) as 200 with {"error":{…}}
+	if err := s.lookupJSON(ctx, deezerAPI+"/search/artist?"+q.Encode(), &res); err != nil || res.Error != nil {
+		return "", false
 	}
 	best, fans := "", -1
 	for _, d := range res.Data {
@@ -186,7 +196,7 @@ func (s *Server) deezerPicture(ctx context.Context, name string) string {
 		best, fans = d.PictureXL, d.Fans
 	}
 	// The CDN makes any size up to the original (1200 px for most): ask for more than 1000.
-	return strings.Replace(best, "/1000x1000-", "/1500x1500-", 1)
+	return strings.Replace(best, "/1000x1000-", "/1500x1500-", 1), true
 }
 
 func sameArtist(a, b string) bool {

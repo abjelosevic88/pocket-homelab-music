@@ -31,6 +31,10 @@ func fakePictureAPIs(t *testing.T) (*httptest.Server, *atomic.Int32) {
 		switch {
 		case r.URL.Path == "/deezer/search/artist":
 			searches.Add(1)
+			if strings.Contains(r.URL.Query().Get("q"), "Busy") {
+				_ = json.NewEncoder(w).Encode(map[string]any{"error": map[string]any{"code": 4, "message": "Quota limit exceeded"}})
+				return
+			}
 			var data []map[string]any
 			if strings.Contains(r.URL.Query().Get("q"), "Ana Band") {
 				data = []map[string]any{
@@ -120,8 +124,8 @@ func TestArtistPictureFanartFirst(t *testing.T) {
 	s.cfg.FanartAPIKey = "fan-key"
 
 	a := &store.Artist{Name: "Ana Band", MBID: "0f1e2d3c-4b5a-6978-8796-a5b4c3d2e1f0"}
-	src := s.artistPicSources(context.Background(), a)
-	if len(src) != 3 || !strings.HasSuffix(src[0], "/never") || src[1] != "https://example.com/low-likes.jpg" || !strings.Contains(src[2], "/img/ana/1500x1500") {
+	src, sure := s.artistPicSources(context.Background(), a)
+	if !sure || len(src) != 3 || !strings.HasSuffix(src[0], "/never") || src[1] != "https://example.com/low-likes.jpg" || !strings.Contains(src[2], "/img/ana/1500x1500") {
 		t.Fatalf("sources = %v, want fanart.tv by likes, then Deezer", src)
 	}
 	// fanart.tv's pictures don't load here: Deezer's is used
@@ -135,8 +139,25 @@ func TestArtistPictureFanartFirst(t *testing.T) {
 
 	// without a key fanart.tv isn't asked
 	s.cfg.FanartAPIKey = ""
-	if src := s.artistPicSources(context.Background(), a); len(src) != 1 {
+	if src, _ := s.artistPicSources(context.Background(), a); len(src) != 1 {
 		t.Fatalf("no key: sources = %v", src)
+	}
+}
+
+func TestArtistPictureRateLimitIsNotAMiss(t *testing.T) {
+	s, _, _, _ := testServer(t)
+	api, searches := fakePictureAPIs(t)
+	defer func(d string) { deezerAPI = d }(deezerAPI)
+	deezerAPI = api.URL + "/deezer"
+	s.cfg.ArtistPictures = true
+	a := &store.Artist{Name: "Busy Band"}
+	for range 2 {
+		if _, ok := s.largeArtistPicture(context.Background(), a); ok {
+			t.Fatal("a picture from a rate limit")
+		}
+	}
+	if searches.Load() != 2 {
+		t.Fatalf("searches = %d, want 2: a rate limit isn't remembered as no photo", searches.Load())
 	}
 }
 
