@@ -70,6 +70,9 @@ type Config struct {
 
 	// Synced lyrics from LRCLIB when the music server has none ("" = off).
 	LyricsURL string
+	// Large artist pictures for banners from Deezer (no key), and fanart.tv's wide ones with a key.
+	ArtistPictures bool
+	FanartAPIKey   string
 	// Where the music library is mounted read-write (the same folder the music
 	// server reads): the lyrics library writes .lrc files next to the songs.
 	MusicDir string
@@ -171,18 +174,20 @@ func Load() (*Config, error) {
 		NavidromeUser:      env("NAVIDROME_USER", ""),
 		NavidromePassword:  env("NAVIDROME_PASSWORD", ""),
 
-		NotifyURL:     env("NOTIFY_URL", ""),
-		NotifyFormat:  strings.ToLower(env("NOTIFY_FORMAT", "")),
-		LidarrURL:     strings.TrimRight(env("LIDARR_URL", ""), "/"),
-		LidarrKey:     env("LIDARR_API_KEY", ""),
-		MalojaURL:     strings.TrimRight(env("MALOJA_URL", ""), "/"),
-		OpenAIKey:     env("OPENAI_API_KEY", ""),
-		OpenAIModel:   env("OPENAI_MODEL", ""),
-		OpenAIBaseURL: strings.TrimRight(env("OPENAI_BASE_URL", ""), "/"),
-		LyricsURL:     strings.TrimRight(env("LYRICS_URL", "https://lrclib.net"), "/"),
-		MusicDir:      strings.TrimRight(env("MUSIC_DIR", ""), "/"),
-		YTDLP:         env("YTDLP", ""),
-		SyncEvery:     envDuration("SYNC_EVERY", 10*time.Minute),
+		NotifyURL:      env("NOTIFY_URL", ""),
+		NotifyFormat:   strings.ToLower(env("NOTIFY_FORMAT", "")),
+		LidarrURL:      strings.TrimRight(env("LIDARR_URL", ""), "/"),
+		LidarrKey:      env("LIDARR_API_KEY", ""),
+		MalojaURL:      strings.TrimRight(env("MALOJA_URL", ""), "/"),
+		OpenAIKey:      env("OPENAI_API_KEY", ""),
+		OpenAIModel:    env("OPENAI_MODEL", ""),
+		OpenAIBaseURL:  strings.TrimRight(env("OPENAI_BASE_URL", ""), "/"),
+		LyricsURL:      strings.TrimRight(env("LYRICS_URL", "https://lrclib.net"), "/"),
+		MusicDir:       strings.TrimRight(env("MUSIC_DIR", ""), "/"),
+		ArtistPictures: env("ARTIST_PICTURES", "on") != "off",
+		FanartAPIKey:   env("FANART_API_KEY", ""),
+		YTDLP:          env("YTDLP", ""),
+		SyncEvery:      envDuration("SYNC_EVERY", 10*time.Minute),
 
 		UserAgent: env("USER_AGENT", "PocketMusic/1.0 (+https://github.com/abjelosevic88/pocket-homelab-music)"),
 

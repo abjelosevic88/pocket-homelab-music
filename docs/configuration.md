@@ -93,6 +93,8 @@ songs already asked about (a JSON file of path → unix time, like `fetch-lyrics
 | `LIDARR_URL` / `LIDARR_API_KEY` | – | The owner's Lidarr: discographies with missing albums on artist pages, New releases, album requests. Everyone else connects their own (or through Pocket Core, service type `lidarr`) under Settings → Lidarr. |
 | `MALOJA_URL` | – | Maloja to import listening history from (its read API is public) |
 | `LYRICS_URL` | `https://lrclib.net` | LRCLIB for lyrics the files don't have; `off` disables online lookups for everybody |
+| `ARTIST_PICTURES` | `on` | Large artist photos for the apps' banners, from Deezer (square, up to 1200 px); looked for after each sync and kept in the data folder. `off` asks nobody |
+| `FANART_API_KEY` | – | A free [fanart.tv](https://fanart.tv/get-an-api-key/) key: wide 1920×1080 band photos first (needs the artist's MusicBrainz ID in the tags) |
 | `NOTIFY_URL` / `NOTIFY_FORMAT` | – / guessed | Apprise `…/notify/<key>`, an ntfy topic URL or a JSON webhook: arrived albums, the weekly recap |
 | `OPENAI_API_KEY` / `OPENAI_MODEL` / `OPENAI_BASE_URL` | – / `gpt-4o-mini` / OpenAI | The owner's AI for "Make a mix" (any OpenAI-compatible API: Ollama, LM Studio, OpenRouter). With Pocket Core, Pocket AI is used when its link is on. |
 

@@ -213,6 +213,7 @@ func (s *Server) rebuildIndex(ctx context.Context, u *store.User, mc *musicConn,
 		return fail(err)
 	}
 	committed = true
+	s.fetchArtistPictures(artists)
 	if uid == s.store.OwnerID(ctx) {
 		s.demoListens(ctx, uid)
 	}

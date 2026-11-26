@@ -45,6 +45,7 @@ func (s *Server) Router() http.Handler {
 			r.Get("/stream/{id}", s.handleStream)
 			r.Get("/download/{id}", s.handleDownload)
 			r.Get("/cover/{id}", s.handleCover)
+			r.Get("/artists/{id}/picture", s.handleArtistPicture) // the first one is looked for online
 			r.Get("/events", s.handleEvents)
 		})
 

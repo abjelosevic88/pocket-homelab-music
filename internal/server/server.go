@@ -59,6 +59,9 @@ type Server struct {
 
 	yt  *ytdlp.Runner // "From a link" downloads
 	lnk linkState
+
+	picMu   sync.Mutex
+	picBusy map[string]chan struct{} // artist pictures being looked for
 }
 
 // New creates a server.
@@ -66,7 +69,7 @@ func New(cfg *config.Config, st *store.Store, log *slog.Logger, webFS fs.FS) *Se
 	return &Server{cfg: cfg, store: st, log: log, webFS: webFS, started: time.Now(), oidc: &oidcProvider{},
 		http:    &http.Client{Timeout: 30 * time.Second},
 		core:    core.New(cfg.CoreURL, core.Options{DB: st.DB, TokenFile: cfg.DataDir + "/core.token", UserAgent: cfg.UserAgent}),
-		syncing: map[int64]bool{}, hub: newHub(), jobs: map[string]bool{},
+		syncing: map[int64]bool{}, hub: newHub(), jobs: map[string]bool{}, picBusy: map[string]chan struct{}{},
 		yt: ytdlp.New(cfg.YTDLP, cfg.DataDir, cfg.UserAgent), lnk: linkState{wake: make(chan struct{}, 1)}}
 }
 

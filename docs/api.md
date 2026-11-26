@@ -23,6 +23,7 @@ that needs the server.
 | `POST /star {"kind":"song|album|artist","id":"…","on":true}` · `POST /rate {"kind","id","rating":0-5}` | Saved on the music server |
 | `GET /lyrics/{songId}` | `{"source":"server|lrclib|","synced":true,"lines":[{"t":12300,"text":"…"}]}` (`t` in ms, -1 when not synced) |
 | `GET /cover/{id}?size=` | Cover art (`al-<album>`, `ar-<artist>`, `pl-<playlist>` or a song id) |
+| `GET /artists/{id}/picture` | A large photo for an artist banner (fanart.tv, else Deezer; kept on the box), 404 when there's none — then use `/cover/ar-<id>` |
 | `GET /stream/{id}` · `?q=320&format=mp3|aac|opus&offset=<s>` | The original file with byte ranges, or transcoded by the server |
 | `GET /download/{id}` | The original file as an attachment |
 | `GET /sync` · `POST /sync` · `POST /sync?scan=1` | Index state; rebuild now; ask the server to scan for new files |
