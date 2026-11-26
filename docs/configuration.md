@@ -94,7 +94,7 @@ songs already asked about (a JSON file of path → unix time, like `fetch-lyrics
 | `MALOJA_URL` | – | Maloja to import listening history from (its read API is public) |
 | `LYRICS_URL` | `https://lrclib.net` | LRCLIB for lyrics the files don't have; `off` disables online lookups for everybody |
 | `ARTIST_PICTURES` | `on` | Large artist photos for the apps' banners, from Deezer (square, up to 1200 px); looked for after each sync and kept in the data folder. `off` asks nobody |
-| `FANART_API_KEY` | – | A free [fanart.tv](https://fanart.tv/get-an-api-key/) key: wide 1920×1080 band photos first (needs the artist's MusicBrainz ID in the tags) |
+| `FANART_API_KEY` / `FANART_CLIENT_KEY` | – | [fanart.tv](https://fanart.tv/get-an-api-key/) project key and/or personal key: wide 1920×1080 band photos first (needs the artist's MusicBrainz ID in the tags). Artists that already have a Deezer photo are looked up again once |
 | `NOTIFY_URL` / `NOTIFY_FORMAT` | – / guessed | Apprise `…/notify/<key>`, an ntfy topic URL or a JSON webhook: arrived albums, the weekly recap |
 | `OPENAI_API_KEY` / `OPENAI_MODEL` / `OPENAI_BASE_URL` | – / `gpt-4o-mini` / OpenAI | The owner's AI for "Make a mix" (any OpenAI-compatible API: Ollama, LM Studio, OpenRouter). With Pocket Core, Pocket AI is used when its link is on. |
 

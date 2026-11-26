@@ -57,15 +57,34 @@ func artistPicKey(a *store.Artist) string {
 
 func (s *Server) artistPicDir() string { return filepath.Join(s.cfg.DataDir, "artist-pictures") }
 
+// fanartUsable: a fanart.tv key and the artist's MusicBrainz ID.
+func (s *Server) fanartUsable(a *store.Artist) bool {
+	return (s.cfg.FanartAPIKey != "" || s.cfg.FanartClientKey != "") && mbidRe.MatchString(a.MBID)
+}
+
+func exists(p string) bool { _, err := os.Stat(p); return err == nil }
+
 // cachedArtistPicture says whether a's picture is on disk (path) or was looked for lately and not found (missing).
+// Found before fanart.tv could be asked (no key then), it's looked for again once: fanart.tv's are wider.
 func (s *Server) cachedArtistPicture(a *store.Artist) (path string, missing bool) {
-	key := artistPicKey(a)
-	p := filepath.Join(s.artistPicDir(), key)
-	if _, err := os.Stat(p); err == nil {
-		return p, false
+	p := filepath.Join(s.artistPicDir(), artistPicKey(a))
+	final := !s.fanartUsable(a) || exists(p+".fanart")
+	if exists(p) {
+		if final {
+			return p, false
+		}
+		return "", false
 	}
-	if st, err := os.Stat(p + ".none"); err == nil && time.Since(st.ModTime()) < artistPicRetry {
+	if st, err := os.Stat(p + ".none"); err == nil && time.Since(st.ModTime()) < artistPicRetry && final {
 		return "", true
+	}
+	return "", false
+}
+
+// orExisting is the picture already on disk, when a new look found nothing better.
+func orExisting(p string) (string, bool) {
+	if exists(p) {
+		return p, true
 	}
 	return "", false
 }
@@ -89,8 +108,7 @@ func (s *Server) largeArtistPicture(ctx context.Context, a *store.Artist) (strin
 		case <-ctx.Done():
 			return "", false
 		}
-		p, _ := s.cachedArtistPicture(a)
-		return p, p != ""
+		return orExisting(filepath.Join(s.artistPicDir(), key))
 	}
 	ch := make(chan struct{})
 	s.picBusy[key] = ch
@@ -107,35 +125,38 @@ func (s *Server) largeArtistPicture(ctx context.Context, a *store.Artist) (strin
 		s.log.Warn("artist pictures: folder", "err", err)
 		return "", false
 	}
-	sources, sure := s.artistPicSources(ctx, a)
+	sources, sure, fanartAnswered := s.artistPicSources(ctx, a)
+	if fanartAnswered {
+		_ = os.WriteFile(p+".fanart", nil, 0o644)
+	}
 	for _, src := range sources {
 		if err := s.saveArtistPicture(ctx, src, p); err == nil {
 			_ = os.Remove(p + ".none")
 			return p, true
 		} else if ctx.Err() != nil {
-			return "", false
+			return orExisting(p)
 		}
 	}
 	// Remember a miss only when every source answered: a rate limit or a timeout is asked again next time.
-	if ctx.Err() == nil && sure {
+	if ctx.Err() == nil && sure && !exists(p) {
 		_ = os.WriteFile(p+".none", nil, 0o644)
 	}
-	return "", false
+	return orExisting(p)
 }
 
 // artistPicSources lists picture URLs, best first: fanart.tv backgrounds, its thumbs, then Deezer.
-// sure is false when a source couldn't be asked (an error, not an answer).
-func (s *Server) artistPicSources(ctx context.Context, a *store.Artist) (out []string, sure bool) {
+// sure is false when a source couldn't be asked (an error, not an answer); fanartAnswered when fanart.tv did.
+func (s *Server) artistPicSources(ctx context.Context, a *store.Artist) (out []string, sure, fanartAnswered bool) {
 	sure = true
-	if s.cfg.FanartAPIKey != "" && mbidRe.MatchString(a.MBID) {
+	if s.fanartUsable(a) {
 		pics, ok := s.fanartPictures(ctx, a.MBID)
-		out, sure = append(out, pics...), ok
+		out, sure, fanartAnswered = append(out, pics...), ok, ok
 	}
 	u, ok := s.deezerPicture(ctx, a.Name)
 	if u != "" {
 		out = append(out, u)
 	}
-	return out, sure && ok
+	return out, sure && ok, fanartAnswered
 }
 
 func (s *Server) fanartPictures(ctx context.Context, mbid string) ([]string, bool) {
@@ -143,7 +164,15 @@ func (s *Server) fanartPictures(ctx context.Context, mbid string) ([]string, boo
 		Backgrounds []fanartImage `json:"artistbackground"`
 		Thumbs      []fanartImage `json:"artistthumb"`
 	}
-	if err := s.lookupJSON(ctx, fanartAPI+"/"+mbid+"?api_key="+url.QueryEscape(s.cfg.FanartAPIKey), &res); err != nil {
+	// a project key (api_key), a personal one (client_key), or both
+	q := url.Values{}
+	if s.cfg.FanartAPIKey != "" {
+		q.Set("api_key", s.cfg.FanartAPIKey)
+	}
+	if s.cfg.FanartClientKey != "" {
+		q.Set("client_key", s.cfg.FanartClientKey)
+	}
+	if err := s.lookupJSON(ctx, fanartAPI+"/"+mbid+"?"+q.Encode(), &res); err != nil {
 		// fanart.tv answers 404 for an artist it has nothing of: that's an answer
 		return nil, strings.HasPrefix(err.Error(), "404")
 	}
@@ -151,7 +180,7 @@ func (s *Server) fanartPictures(ctx context.Context, mbid string) ([]string, boo
 	for _, list := range [][]fanartImage{res.Backgrounds, res.Thumbs} {
 		sort.SliceStable(list, func(i, j int) bool { return list[i].likes() > list[j].likes() })
 		for i, im := range list {
-			if i < 2 && strings.HasPrefix(im.URL, "https://") {
+			if i < 2 && (strings.HasPrefix(im.URL, "https://") || strings.HasPrefix(im.URL, "http://")) {
 				out = append(out, im.URL)
 			}
 		}
