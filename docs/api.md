@@ -149,9 +149,22 @@ Other Pocket apps may act for a person (who allows it in Pocket Core) with these
 - `listening:read` — `GET /dashboard`, `/history`, `/stats`, `/recap`, `/devices`, `/day/{date}`.
 - `playlists:write` — `GET /search`, `/genres`, `/playlists`, `/songs|albums|artists|playlists/{id}`, `/cover/{id}`,
   `POST /playlists`, `PUT /playlists/{id}`.
+- `pocket:search`, `pocket:day`, `pocket:widget` — each opens its one route below, for reading, and nothing else.
 
 Events published on the Core bus (each with `user_email`): `music.loved`, `music.playlist_created`,
 `music.album_requested`, `music.album_arrived`, `music.mix_made`.
+
+### For Pocket Search, Pocket Day and Pocket Hub
+
+Pocket Music says in its manifest what the apps that bring the box together may ask it (shelf `Media`), and answers
+in the shape every Pocket app uses ([capabilities](https://github.com/abjelosevic88/pocket-homelab-core/blob/main/docs/capabilities.md)).
+A person signed in here can call the same routes. None of them plays a song, records a play or touches a playlist.
+
+| | |
+|---|---|
+| `GET /pocket/search?q=&limit=` | Albums, artists and songs by name, the best match first: `{"items":[{"id":"album:…\|artist:…\|song:…","title","snippet","kind","url","score"}]}`. An album's line is its artist and year, a song's its artist, album and length; a song opens in its album. The same lookup as `GET /search` (the index, and the music server while the index is still empty). No music server account answers an empty list |
+| `GET /pocket/day/{YYYY-MM-DD}?tz=<IANA zone>` | The songs listened to that day, each once: `{"date","summary","items":[{"id","time","title","sub","minutes","qty","url","image"}],"metrics"}` — `time` is the first play, `minutes` the time the song got, `qty` its plays, `sub` the artist. The minutes add up to the day's listening; past 199 songs the rest share one last line. Read from the plays kept here, never from the music server |
+| `GET /pocket/widget` | What plays now (when a device reported it here) or the last song played, the five songs played last and today's and the last seven days' listening: `{"line","metrics","items":[{"id","title","detail","url"}],"url"}`. Read from the plays kept here |
 
 ## Homepage widget
 

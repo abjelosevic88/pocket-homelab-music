@@ -125,6 +125,9 @@ The same [docker-compose.yml](docker-compose.yml) does both: the bundled Navidro
 - One sign-in; each person’s Navidrome and Lidarr login comes from Core — nothing to paste.
 - Pocket Day can write “what you listened to” into your journal (`listening:read`); other apps can make playlists
   for you (`playlists:write`); events for loves, playlists, requests and arrivals.
+- Pocket Search finds your albums, artists and songs (`!music`, `!song`, `!album`), Pocket Day can read the songs
+  of a day and Pocket Hub shows what you played last (`pocket:search`, `pocket:day`, `pocket:widget`). Each of
+  them only reads, and only your own music.
 - Strictly per person: plays, stats, mixes and settings are yours; admins don’t see anyone else’s listening.
 
 ## Run it

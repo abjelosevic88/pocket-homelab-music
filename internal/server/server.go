@@ -295,12 +295,13 @@ func (s *Server) registerWithCore(ctx context.Context) error {
 	m := core.Manifest{
 		Slug: "music", Name: "Pocket Music",
 		Description: "Your music library, played anywhere: Navidrome underneath, with listening history and stats, daily mixes and radio, smart playlists every Subsonic player sees, synced lyrics, \"make me a mix\" with AI, and albums you are missing fetched through Lidarr.",
-		Icon:        "/favicon.svg", Version: Version,
+		Icon:        "/favicon.svg", Version: Version, Category: "Media",
 		URL: s.cfg.CoreAppURL, PublicURL: s.cfg.BaseURL, HealthPath: "/healthz", EnvPrefix: "MUSIC",
-		Publishes: eventTopics,
-		Offers:    linkOffers,
-		Portable:  portable,
-		Uses:      []core.Use{core.InferenceUse()},
+		Publishes:    eventTopics,
+		Offers:       linkOffers,
+		Portable:     portable,
+		Capabilities: capabilities,
+		Uses:         []core.Use{core.InferenceUse()},
 		Services: []core.ServiceUse{
 			{Type: "navidrome", Reason: "Your music library: Pocket Music plays it with your own Navidrome account"},
 			{Type: "lidarr", Reason: "Discographies, missing albums and album requests"},

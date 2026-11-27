@@ -34,6 +34,17 @@ var portable = &core.Portable{
 	},
 }
 
+// capabilities is what Pocket Search, Pocket Day and Pocket Hub may ask here
+// for a person (docs/capabilities.md in pocket-homelab-core); Register adds
+// pocket:search, pocket:day and pocket:widget, and each opens only its one
+// reading route (capabilities.go). Nothing can be kept here from a quick
+// line: a song is not something a person types in.
+var capabilities = core.Capabilities{
+	Search: &core.Searchable{What: "Your albums, artists and songs, by name", Kinds: []string{"album", "artist", "song"}, Bangs: []string{"music", "song", "album"}},
+	Day:    &core.DayFeed{Label: "Music", One: "song", Many: "songs", Unit: "min", What: "The songs you listened to that day and for how long"},
+	Widget: &core.Widget{Title: "Recently played", What: "What is playing now and the songs you played last"},
+}
+
 type linkRoute struct {
 	methods string
 	path    *regexp.Regexp
@@ -57,7 +68,7 @@ var errLinkScope = errors.New("outside the link's scope")
 
 // linkAllows reports whether a link token with these scopes may make this request.
 func linkAllows(scopes []string, r *http.Request) bool {
-	if portable.LinkAllows(scopes, r) {
+	if portable.LinkAllows(scopes, r) || capabilities.LinkAllows(scopes, r) {
 		return true
 	}
 	for _, lr := range linkRoutes {

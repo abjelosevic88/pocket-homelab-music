@@ -395,26 +395,42 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 		if mc == nil {
 			return
 		}
-		ar, al, so, err := mc.c.Search(ctx, q, n, n, n*2)
+		artists, albums, songs, err := searchServer(ctx, mc, q, n)
 		if err != nil {
 			s.musicErr(w, err)
 			return
 		}
-		artists := []store.Artist{}
-		for _, a := range ar {
-			artists = append(artists, store.Artist{ID: a.ID, Name: a.Name, AlbumCount: a.AlbumCount, StarredAt: a.Starred})
-		}
-		albums := []store.Album{}
-		for _, a := range al {
-			albums = append(albums, indexAlbum(a))
-		}
-		songs := []store.Song{}
-		for _, x := range so {
-			songs = append(songs, indexSong(x))
-		}
 		writeJSON(w, http.StatusOK, map[string]any{"artists": artists, "albums": albums, "songs": songs})
 		return
 	}
+	artists, albums, songs := s.searchIndex(ctx, uid, q, n)
+	writeJSON(w, http.StatusOK, map[string]any{"artists": artists, "albums": albums, "songs": songs})
+}
+
+// searchServer asks the music server itself, with the person's own account:
+// what the search answers while their index is still empty.
+func searchServer(ctx context.Context, mc *musicConn, q string, n int) ([]store.Artist, []store.Album, []store.Song, error) {
+	ar, al, so, err := mc.c.Search(ctx, q, n, n, n*2)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	artists := []store.Artist{}
+	for _, a := range ar {
+		artists = append(artists, store.Artist{ID: a.ID, Name: a.Name, AlbumCount: a.AlbumCount, StarredAt: a.Starred})
+	}
+	albums := []store.Album{}
+	for _, a := range al {
+		albums = append(albums, indexAlbum(a))
+	}
+	songs := []store.Song{}
+	for _, x := range so {
+		songs = append(songs, indexSong(x))
+	}
+	return artists, albums, songs, nil
+}
+
+// searchIndex finds up to n artists, n albums and 2n songs in the person's index.
+func (s *Server) searchIndex(ctx context.Context, uid int64, q string, n int) ([]store.Artist, []store.Album, []store.Song) {
 	get := func(kind string, limit int) []string {
 		hits, err := s.store.Search(ctx, uid, q, kind, limit)
 		if err != nil {
@@ -435,7 +451,7 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 	albums, _ := s.store.AlbumsByID(ctx, uid, get("album", n))
 	songs, _ := s.store.SongsByID(ctx, uid, get("song", n*2))
 	s.store.FillSongPlays(ctx, uid, songs)
-	writeJSON(w, http.StatusOK, map[string]any{"artists": artists, "albums": albums, "songs": songs})
+	return artists, albums, songs
 }
 
 // ---- stars and ratings ----
